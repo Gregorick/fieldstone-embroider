@@ -11,6 +11,7 @@ export interface CartItem {
   size: string;
   color: string;
   quantity: number;
+  decorationMethod?: string; // 👇 ¡AÑADE ESTA LÍNEA!
 }
 
 interface CartContextType {

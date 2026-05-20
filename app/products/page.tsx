@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+// ✅ 1. Importamos Suspense de react
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { ChevronRight, Filter, X, Plus } from "lucide-react";
-// ✅ 1. Importar el Hook del Carrito
 import { useCart } from "../context/CartContext";
 
 // --- MAPA DE COLORES EXTENDIDO ---
@@ -24,7 +24,7 @@ const getHexForColor = (colorName: string) => {
   return colorMap[name] || colorMap[colorName] || "#E5E7EB"; 
 };
 
-// --- COMPONENTE DE IMAGEN (No tocamos el diseño, solo inyectamos en su contenedor) ---
+// --- COMPONENTE DE IMAGEN ---
 function CatalogImage({ imageUrl, title }: { imageUrl: string; title: string }) {
   return (
     <>
@@ -41,7 +41,8 @@ function CatalogImage({ imageUrl, title }: { imageUrl: string; title: string }) 
 
 const ITEMS_PER_PAGE = 24;
 
-export default function ProductsPage() {
+// ✅ 2. Renombramos tu componente principal a "ProductsContent"
+function ProductsContent() {
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") || "";
   const initialBrand = searchParams.get("brand") || "";
@@ -67,7 +68,6 @@ export default function ProductsPage() {
   const [dynamicCategories, setDynamicCategories] = useState<string[]>([]);
   const [dynamicBrands, setDynamicBrands] = useState<string[]>([]);
 
-  // ✅ 2. Instanciamos el carrito
   const { addToCart } = useCart();
 
   useEffect(() => {
@@ -194,7 +194,6 @@ export default function ProductsPage() {
         
         {/* SIDEBAR DE FILTROS */}
         <aside className={`w-full lg:w-[260px] flex-shrink-0 ${isMobileFiltersOpen ? 'fixed inset-0 z-[200] bg-white overflow-y-auto p-6' : 'hidden lg:block'}`}>
-          {/* ... (Todo el sidebar queda igual) ... */}
           {isMobileFiltersOpen && (
             <div className="flex justify-between items-center mb-8 border-b pb-4">
               <h2 className="text-2xl font-black uppercase tracking-tighter">Filters</h2>
@@ -296,7 +295,7 @@ export default function ProductsPage() {
 
           {loading ? (
             <div className="py-40 flex justify-center">
-              <div className="w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin" />
+              <div className="w-10 h-10 border-4 border-gray-200 border-t-[#8012d8] rounded-full animate-spin" />
             </div>
           ) : products.length > 0 ? (
             <>
@@ -304,7 +303,6 @@ export default function ProductsPage() {
                 {products.map((product) => (
                   <Link key={product.id} href={`/products/${product.id}`} className="group block">
                     
-                    {/* ✅ 3. CONTENEDOR CON EL BOTÓN QUICK ADD */}
                     <div className="relative aspect-[3/4] bg-[#F3F3F3] rounded-2xl overflow-hidden mb-4 group-hover:shadow-md transition-all duration-500 flex items-center justify-center">
                       <CatalogImage imageUrl={product.image_url} title={product.title} />
                       
@@ -384,5 +382,20 @@ export default function ProductsPage() {
       </section>
       <Footer />
     </main>
+  );
+}
+
+// ✅ 3. Creamos el nuevo componente principal que envuelve a ProductsContent en Suspense
+export default function ProductsPage() {
+  return (
+    <Suspense 
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-white">
+          <div className="w-10 h-10 border-4 border-gray-200 border-t-[#8012d8] rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <ProductsContent />
+    </Suspense>
   );
 }

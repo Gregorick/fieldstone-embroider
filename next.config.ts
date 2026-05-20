@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 👇 Esto le dice a Next.js que vivirá en esta subcarpeta en cPanel
+  // Esto le dice a Next.js que vivirá en esta subcarpeta en cPanel
   basePath: '/fieldstone-embroider', 
   images: {
     remotePatterns: [

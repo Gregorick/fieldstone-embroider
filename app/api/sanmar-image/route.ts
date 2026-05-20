@@ -11,7 +11,8 @@ export async function GET(request: Request) {
   const cleanName = decodeURIComponent(imageName).replace(/^\//, "");
   const sanmarUrl = `https://view.sanmar.com/get-image?imageName=${cleanName}`;
 
-  return new Promise((resolve) => {
+  // 👇 AQUÍ ESTÁ LA MAGIA: Le decimos a TypeScript que esta promesa devuelve un NextResponse
+  return new Promise<NextResponse>((resolve) => {
     const options = {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -27,8 +28,9 @@ export async function GET(request: Request) {
         return;
       }
 
-      const chunks: any[] = [];
-      res.on('data', (chunk) => chunks.push(chunk));
+      // 👇 Mejoramos el tipado para evitar usar "any"
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
       res.on('end', () => {
         const buffer = Buffer.concat(chunks);
         resolve(new NextResponse(buffer, {
