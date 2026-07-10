@@ -2,154 +2,210 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-// --- BOTÓN ESTILO FIELDSTONE ---
-function CategoryButton({ text }: { text: string }) {
+// ✅ 1. IMPORTACIONES DIRECTAS CON LOS NOMBRES EXACTOS DEL HTML DE SANMAR
+import logoA4 from "@/public/brands/mvp-brand-icon-a4.svg";
+import logoAllmade from "@/public/brands/mvp-brand-icon-allmade.svg";
+import logoBellaCanvas from "@/public/brands/mvp-brand-icon-bella-canvas.svg";
+import logoBrooksBrothers from "@/public/brands/mvp-brand-icon-brook-brothers.svg";
+import logoBulwark from "@/public/brands/mvp-brand-icon-bulwark.svg";
+import logoCarhartt from "@/public/brands/mvp-brand-icon-carhartt.svg";
+import logoChampion from "@/public/brands/mvp-brand-icon-champion.svg";
+import logoComfortColors from "@/public/brands/mvp-brand-icon-comfort-colors.svg";
+import logoCornerstone from "@/public/brands/CornerStone-Web-LogoBug.svg";
+import logoCotopaxi from "@/public/brands/mvp-brand-icon-cotopaxi.svg";
+import logoDistrict from "@/public/brands/mvp-brand-icon-district.svg";
+import logoEddieBauer from "@/public/brands/mvp-brand-icon-eddie-bauer.svg";
+import logoGildan from "@/public/brands/mvp-brand-icon-gildan.svg";
+import logoJerzees from "@/public/brands/mvp-brand-icon-jerzees.svg";
+import logoMercerMettle from "@/public/brands/mvp-brand-icon-mercer-mettle.svg";
+import logoNewEra from "@/public/brands/mvp-brand-icon-new-era.svg";
+import logoNextLevel from "@/public/brands/mvp-brand-icon-next-level-apparel.svg";
+import logoNike from "@/public/brands/mvp-brand-icon-nike.svg";
+import logoOgio from "@/public/brands/mvp-brand-icon-ogio.svg";
+import logoOutdoorResearch from "@/public/brands/mvp-brand-icon-outdoor-research.svg";
+import logoPortCo from "@/public/brands/mvp-brand-icon-port-company.svg";
+import logoPortAuthority from "@/public/brands/mvp-brand-icon-port-authority.svg";
+import logoRabbitSkins from "@/public/brands/mvp-brand-icon-rabbit-skins.svg";
+import logoRedKap from "@/public/brands/mvp-brand-icon-red-kap.svg";
+import logoRichardson from "@/public/brands/Richardson-20x20-2.svg";
+import logoRussellOutdoors from "@/public/brands/mvp-brand-icon-russel-outdoors.svg";
+import logoSpacecraft from "@/public/brands/mvp-brand-icon-spacecraft.svg";
+import logoSportTek from "@/public/brands/mvp-brand-icon-sport-tek.svg";
+import logoStanleyStella from "@/public/brands/mvp-brand-icon-stenley-stella.svg";
+import logoTentree from "@/public/brands/mvp-brand-icon-tentree.svg";
+import logoTheNorthFace from "@/public/brands/mvp-brand-icon-the-north-face.svg";
+import logoTommyBahama from "@/public/brands/mvp-brand-icon-tommy-bahama.svg";
+import logoTravisMathew from "@/public/brands/mvp-brand-icon-travismathew.svg";
+import logoVolunteerKnitwear from "@/public/brands/mvp-brand-icon-volonteer-knitwear.svg";
+import logoWink from "@/public/brands/mvp-brand-icon-wink.svg";
+
+// ✅ 2. DICCIONARIO: Conecta el nombre en la Base de Datos con la Imagen
+const brandImagesMap: Record<string, any> = {
+  "A4": logoA4,
+  "Allmade": logoAllmade,
+  "BELLA+CANVAS": logoBellaCanvas,
+  "Brooks Brothers": logoBrooksBrothers,
+  "Bulwark": logoBulwark,
+  "Carhartt": logoCarhartt,
+  "Champion": logoChampion,
+  "Comfort Colors": logoComfortColors,
+  "CornerStone": logoCornerstone,
+  "Cotopaxi": logoCotopaxi,
+  "District": logoDistrict,
+  "Eddie Bauer": logoEddieBauer,
+  "Gildan": logoGildan,
+  "Jerzees": logoJerzees,
+  "Mercer+Mettle": logoMercerMettle,
+  "New Era": logoNewEra,
+  "Next Level Apparel": logoNextLevel,
+  "Nike": logoNike,
+  "OGIO": logoOgio,
+  "Outdoor Research": logoOutdoorResearch,
+  "Port & Co": logoPortCo,
+  "Port Authority": logoPortAuthority,
+  "Rabbit Skins": logoRabbitSkins,
+  "Red Kap": logoRedKap,
+  "Richardson": logoRichardson,
+  "Russell Outdoors": logoRussellOutdoors,
+  "Spacecraft": logoSpacecraft,
+  "Sport-Tek": logoSportTek,
+  "Stanley/Stella": logoStanleyStella,
+  "tentree": logoTentree,
+  "The North Face": logoTheNorthFace,
+  "Tommy Bahama": logoTommyBahama,
+  "TravisMathew": logoTravisMathew,
+  "Volunteer Knitwear": logoVolunteerKnitwear,
+  "Wink": logoWink
+};
+
+// 3. ORDEN DE PRIORIDAD DE LAS MARCAS DESTACADAS (Aparecerán primero)
+const TOP_FEATURED_BRANDS = [
+  "Nike", "The North Face", "Carhartt", "Comfort Colors", 
+  "Stanley/Stella", "OGIO", "TravisMathew", "Gildan", 
+  "Champion", "New Era", "Richardson", "Sport-Tek", 
+  "BELLA+CANVAS", "Mercer+Mettle", "Port Authority", "District"
+];
+
+// --- COMPONENTE DE TARJETA DE MARCA ---
+function BrandCard({ brandName }: { brandName: string }) {
+  // Buscamos la imagen mapeada
+  const importedImage = brandImagesMap[brandName];
+  const [imgError, setImgError] = useState(false);
+
   return (
-    <div className="absolute bottom-6 left-6 bg-white px-6 py-3 rounded-sm flex items-center gap-3 shadow-xl group-hover:bg-[#8012d8] group-hover:text-[#fff] transition-all duration-500 z-20">
-      <span className="text-[10px] font-black uppercase tracking-[0.2em] truncate max-w-[120px]">
-        {text}
-      </span>
-      <ChevronRight size={14} strokeWidth={3} />
-    </div>
+    <Link 
+      href={`/products?brand=${encodeURIComponent(brandName)}`}
+      className="group relative flex flex-col items-center justify-center h-24 bg-[#F3F4F6] rounded-xl border border-transparent hover:border-gray-300 hover:shadow-md transition-all duration-300 px-4"
+    >
+      {importedImage && !imgError ? (
+        <img 
+          src={importedImage.src} 
+          alt={`${brandName} logo`}
+          className="max-h-24 w-12 max-w-[90%] object-contain mix-blend-multiply opacity-80 group-hover:opacity-100 transition-opacity duration-300"
+          onError={() => {
+            console.error(`🚨 Falló carga en el navegador: ${brandName}`);
+            setImgError(true);
+          }} 
+        />
+      ) : (
+        // Fallback elegante en caso de que Next.js no empaquete bien la imagen o no exista
+        <span className="text-sm font-black uppercase tracking-widest text-gray-800 text-center truncate w-full">
+          {brandName}
+        </span>
+      )}
+    </Link>
   );
 }
 
-// --- COMPONENTE DE IMAGEN (Restaurando el estilo Visual Original) ---
-function CategoryImage({ imageUrl, category }: { imageUrl: string; category: string }) {
-  const getStyle = (url: string) => {
-    if (!url) return "";
-    const name = url.split('/').pop() || "";
-    return name.split('_')[0].split('.')[0];
-  };
-
-  const style = getStyle(imageUrl);
-  // Volvemos a la lógica de .jpg que llena mejor el espacio de categoría
-  const [imgSrc, setImgSrc] = useState(`https://cdnm.sanmar.com/catalog/images/${style}.jpg`);
-
-  return (
-    <>
-      <img 
-        src={imgSrc} 
-        alt={category}
-        // ✅ Restauramos object-cover y quitamos el padding para que llene todo el recuadro
-        className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
-        onError={(e) => {
-          if (imgSrc.includes('.jpg') && !imgSrc.includes('_model_front')) {
-            setImgSrc(`https://cdnm.sanmar.com/catalog/images/${style}_model_front.jpg`);
-          }
-        }}
-      />
-      {/* Capa de oscurecimiento sutil original */}
-      <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition-colors duration-500" />
-    </>
-  );
-}
-
-interface CategoryItem {
-  name: string;
-  imageUrl: string;
-}
-
-export default function TopCategories({ excludeCategories }: { excludeCategories: string[] }) {
-  const [displayCategories, setDisplayCategories] = useState<CategoryItem[]>([]);
+export default function FeaturedBrands() {
+  const [displayBrands, setDisplayBrands] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchTopCategories() {
+    async function fetchFeaturedBrands() {
       setLoading(true);
       try {
-        // 🚀 Una sola petición a la Vista Materializada (Instantáneo)
+        // ✅ AÑADIDO: 1. Consultar la configuración del administrador primero
+        const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
+        const allowedBrands: string[] = settings?.visible_brands || [];
+
+        // 2. Consultar las marcas de los productos
         const { data: products, error } = await supabase
           .from("products_unique_styles")
-          .select("category, image_url")
-          .not("category", "is", null)
-          .not("image_url", "is", null)
-          .limit(200);
+          .select("brand")
+          .not("brand", "is", null)
+          .limit(5000);
 
         if (error) throw error;
 
         if (products) {
-          const catMap = new Map();
-          products.forEach(p => {
-            if (!catMap.has(p.category) && !excludeCategories.includes(p.category)) {
-              catMap.set(p.category, p.image_url);
-            }
+          // 3. Obtenemos todas las marcas únicas de tu base de datos
+          const availableBrands = Array.from(new Set(products.map(p => p.brand)));
+          
+          // 4. Filtramos: Que tengan imagen AND (Opcional) que el admin las permita
+          let filteredBrands = availableBrands.filter(b => brandImagesMap[b]);
+          
+          if (allowedBrands.length > 0) {
+            filteredBrands = filteredBrands.filter(b => allowedBrands.includes(b));
+          }
+          
+          // 5. Ordenamos: Las TOP primero, luego el resto en orden alfabético
+          const sortedBrands = filteredBrands.sort((a, b) => {
+            const indexA = TOP_FEATURED_BRANDS.indexOf(a);
+            const indexB = TOP_FEATURED_BRANDS.indexOf(b);
+            
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB; // Ambas son TOP
+            if (indexA !== -1) return -1; // Solo A es TOP
+            if (indexB !== -1) return 1;  // Solo B es TOP
+            
+            return a.localeCompare(b); // Ninguna es TOP, orden alfabético normal
           });
 
-          const availableCats = Array.from(catMap.entries()).map(([name, imageUrl]) => ({
-            name,
-            imageUrl
-          }));
-
-          const selected = availableCats
-            .sort(() => 0.5 - Math.random())
-            .slice(0, 4);
-
-          setDisplayCategories(selected);
+          // 6. Mostramos todas las marcas filtradas y ordenadas
+          setDisplayBrands(sortedBrands);
         }
       } catch (e) {
-        console.error("Error en categorias:", e);
+        console.error("Error cargando marcas:", e);
       } finally {
         setLoading(false);
       }
     }
-    fetchTopCategories();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchFeaturedBrands();
   }, []);
 
-  if (loading || displayCategories.length < 4) return null;
+  if (loading || displayBrands.length === 0) return null;
 
   return (
-    <section className="bg-white py-20 border-t border-gray-100">
-      <div className="container mx-auto px-4">
+    <section className="bg-white py-16 border-t border-gray-100">
+      <div className="container mx-auto px-4 lg:px-8 max-w-screen-2xl">
         
-        <div className="mb-16">
-           <span className="color-primary text-[10px] font-black uppercase tracking-[0.4em] block mb-2">Curated Collections</span>
-           <h2 className="text-5xl font-black uppercase tracking-tighter text-black italic">
-              Top Categories<span className="color-primary">.</span>
-           </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 grid-rows-2 gap-4 h-[600px]">
-          {/* CATEGORÍA 1 - GRANDE */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-10 gap-4">
+          <div>
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight text-gray-900">
+              Shop Featured Brands
+            </h2>
+            <p className="text-sm font-medium text-gray-500 mt-2">
+              Premium apparel ready for your custom logo.
+            </p>
+          </div>
+          
           <Link 
-            href={`/products?category=${encodeURIComponent(displayCategories[0].name)}`} 
-            className="relative text-gray-600 group col-span-2 row-span-2 rounded-xl overflow-hidden bg-[#F3F3F3] shadow-sm border border-gray-100"
+            href="/products" 
+            className="text-sm font-bold text-[#3b5bdb] hover:text-blue-800 transition-colors flex items-center gap-1"
           >
-            <CategoryImage imageUrl={displayCategories[0].imageUrl} category={displayCategories[0].name} />
-            <CategoryButton text={displayCategories[0].name} />
-          </Link>
-
-          {/* CATEGORÍA 2 */}
-          <Link 
-            href={`/products?category=${encodeURIComponent(displayCategories[1].name)}`} 
-            className="relative text-gray-600 group rounded-xl overflow-hidden bg-[#F3F3F3] shadow-sm border border-gray-100"
-          >
-            <CategoryImage imageUrl={displayCategories[1].imageUrl} category={displayCategories[1].name} />
-            <CategoryButton text={displayCategories[1].name} />
-          </Link>
-
-          {/* CATEGORÍA 3 */}
-          <Link 
-            href={`/products?category=${encodeURIComponent(displayCategories[2].name)}`} 
-            className="relative text-gray-600 group rounded-xl overflow-hidden bg-[#F3F3F3] shadow-sm border border-gray-100"
-          >
-            <CategoryImage imageUrl={displayCategories[2].imageUrl} category={displayCategories[2].name} />
-            <CategoryButton text={displayCategories[2].name} />
-          </Link>
-
-          {/* CATEGORÍA 4 - ANCHA */}
-          <Link 
-            href={`/products?category=${encodeURIComponent(displayCategories[3].name)}`} 
-            className="relative text-gray-600 group col-span-2 rounded-xl overflow-hidden bg-[#F3F3F3] shadow-sm border border-gray-100"
-          >
-            <CategoryImage imageUrl={displayCategories[3].imageUrl} category={displayCategories[3].name} />
-            <CategoryButton text={displayCategories[3].name} />
+            See All Featured Brands <span aria-hidden="true">&rarr;</span>
           </Link>
         </div>
+
+        {/* GRID DE LOGOS */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 md:gap-4">
+          {displayBrands.map((brandName, idx) => (
+            <BrandCard key={idx} brandName={brandName} />
+          ))}
+        </div>
+
       </div>
     </section>
   );

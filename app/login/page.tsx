@@ -8,6 +8,9 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { ArrowRight, AlertCircle } from "lucide-react";
 
+// ✅ IMPORTAMOS NUESTRA FUNCIÓN PARA ENLAZAR ÓRDENES
+import { linkGuestOrdersToAccount } from "@/lib/orderService";
+
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -28,7 +31,12 @@ export default function LoginPage() {
 
       if (authError) throw authError;
 
-      // Login exitoso, enviamos al dashboard (lo crearemos en la Fase 2)
+      // ✅ PASO 4: ENLAZAR ÓRDENES DE INVITADO A LA CUENTA
+      if (data.user) {
+        await linkGuestOrdersToAccount(data.user.id);
+      }
+
+      // Login exitoso, enviamos al dashboard
       router.push("/account");
       
     } catch (err: any) {

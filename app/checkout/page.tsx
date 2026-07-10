@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { useCart } from "../context/CartContext";
-import { ChevronRight, Lock, CreditCard, Truck, ShoppingBag } from "lucide-react";
+import { ChevronRight, Lock, Truck, ShoppingBag, ShieldCheck } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { createCompleteOrder } from "@/lib/orderService"; // ✅ IMPORTAMOS NUESTRO SERVICIO DE ÓRDENES
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -16,18 +18,74 @@ export default function CheckoutPage() {
   const shippingCost = cartTotal > 0 ? 15.00 : 0;
   const finalTotal = cartTotal + shippingCost;
 
-  // Estado simple para simular la carga del pago
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleCheckout = (e: React.FormEvent) => {
+  const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsProcessing(true);
-    // Aquí iría la lógica de conexión con tu pasarela de pago
-    setTimeout(() => {
+
+    try {
+      // 1. Extraemos los datos del formulario
+      const formData = new FormData(e.currentTarget);
+      const email = formData.get("email") as string;
+      const firstName = formData.get("firstName") as string;
+      const lastName = formData.get("lastName") as string;
+      const fullName = `${firstName} ${lastName}`.trim();
+
+      // 2. Verificamos si hay un usuario logueado actualmente
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || null;
+
+      // ✅ 3. PASO 3: GUARDAMOS LA ORDEN EN SUPABASE ANTES DE IR A CLOVER
+      // Esto sube el logo al bucket y guarda todo en las tablas orders y order_items
+      const orderResult = await createCompleteOrder(
+        cartItems,
+        { name: fullName, email: email, total: finalTotal },
+        userId
+      );
+
+      if (!orderResult.success) {
+        console.error("Error saving order to Supabase:", orderResult.error);
+        alert("There was an issue processing your order details. Please try again.");
+        setIsProcessing(false);
+        return;
+      }
+
+      // El ID real generado por la base de datos
+      const orderId = orderResult.orderId;
+
+      // 4. Llamamos a nuestra API de Clover para iniciar el pago
+      // (Ajusté la ruta a /api/create-checkout asumiendo que está en tu raíz)
+      const res = await fetch('/fieldstone-embroider/api/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cartItems,
+          email: email,
+          orderId: orderId // Opcional: Le pasamos el ID a tu API para tracking
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`La API respondió con error: ${res.status} ${res.statusText}`);
+      }
+
+      const data = await res.json();
+
+      // 5. Redireccionamos a la bóveda segura si Clover nos da la URL
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        console.error("Clover rechazó la creación del pago:", data);
+        alert("Ocurrió un error al contactar la pasarela de pago. Intenta de nuevo.");
+        setIsProcessing(false);
+      }
+
+    } catch (error) {
+      console.error("Error de red o servidor:", error);
+      alert("Error de conexión. Revisa tu internet e intenta de nuevo.");
       setIsProcessing(false);
-      alert("Order placed successfully! (Simulation)");
-      // router.push("/success"); // Redirigir a página de éxito
-    }, 2000);
+    }
   };
 
   if (cartItems.length === 0) {
@@ -52,7 +110,6 @@ export default function CheckoutPage() {
       <Header />
 
       <div className="container mx-auto px-4 py-12 flex-1 max-w-7xl">
-        {/* Breadcrumbs */}
         <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-gray-400 mb-10">
           <Link href="/" className="hover:text-black transition-colors">Home</Link>
           <ChevronRight size={10} />
@@ -63,7 +120,6 @@ export default function CheckoutPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
           
-          {/* --- FORMULARIO DE CHECKOUT (Izquierda) --- */}
           <div className="lg:col-span-7 space-y-12">
             <form id="checkout-form" onSubmit={handleCheckout} className="space-y-12">
               
@@ -78,6 +134,7 @@ export default function CheckoutPage() {
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address *</label>
                     <input 
                       type="email" 
+                      name="email"
                       required
                       placeholder="you@example.com"
                       className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors"
@@ -101,11 +158,13 @@ export default function CheckoutPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name *</label>
-                    <input type="text" required className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
+                    {/* ✅ Añadido name="firstName" */}
+                    <input type="text" name="firstName" required className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
                   </div>
                   <div className="md:col-span-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name *</label>
-                    <input type="text" required className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
+                    {/* ✅ Añadido name="lastName" */}
+                    <input type="text" name="lastName" required className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Street Address *</label>
@@ -126,61 +185,28 @@ export default function CheckoutPage() {
                 </div>
               </section>
 
-              {/* Sección 3: Pago (Visual) */}
+              {/* Sección 3: Pago */}
               <section>
                 <h2 className="text-2xl font-black uppercase tracking-tighter text-black mb-6 flex items-center gap-3">
                   <span className="flex items-center justify-center w-8 h-8 rounded-full bg-black text-white text-xs">3</span>
                   Payment
                 </h2>
-                <p className="text-[11px] font-bold text-gray-400 mb-4 uppercase tracking-widest flex items-center gap-2">
-                  <Lock size={12} /> All transactions are secure and encrypted
-                </p>
-
-                <div className="border border-gray-200 rounded-xl overflow-hidden">
-                  {/* Opción Tarjeta */}
-                  <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center gap-4">
-                    <input type="radio" name="payment" id="credit-card" defaultChecked className="w-4 h-4 accent-black cursor-pointer" />
-                    <label htmlFor="credit-card" className="flex-1 text-sm font-bold text-black cursor-pointer flex items-center justify-between">
-                      Credit Card
-                      <CreditCard size={18} className="text-gray-400" />
-                    </label>
-                  </div>
-                  <div className="p-6 bg-white space-y-4">
-                    <div className="md:col-span-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Card Number</label>
-                      <input type="text" placeholder="0000 0000 0000 0000" className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Expiration Date</label>
-                        <input type="text" placeholder="MM / YY" className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Security Code</label>
-                        <input type="text" placeholder="CVC" className="w-full text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Opción PayPal */}
-                  <div className="p-4 bg-white flex items-center gap-4 border-t border-gray-200">
-                    <input type="radio" name="payment" id="paypal" className="w-4 h-4 accent-black cursor-pointer" />
-                    <label htmlFor="paypal" className="flex-1 text-sm font-bold text-black cursor-pointer flex items-center justify-between">
-                      PayPal
-                      <img src="paypal.webp" alt="PayPal" className="h-4 object-contain grayscale opacity-50" />
-                    </label>
-                  </div>
+                
+                <div className="border border-gray-200 rounded-xl overflow-hidden p-8 text-center bg-gray-50">
+                  <ShieldCheck size={48} className="mx-auto text-green-500 mb-4" />
+                  <h3 className="text-sm font-bold text-black mb-2">Secure Payment Authorization</h3>
+                  <p className="text-xs text-gray-500 max-w-md mx-auto">
+                    To guarantee your security, Fieldstone Embroidery does not store credit card information. You will be redirected to Clover's secure vault to complete your purchase.
+                  </p>
                 </div>
               </section>
 
             </form>
           </div>
 
-          {/* --- RESUMEN DEL PEDIDO (Derecha Sticky) --- */}
           <div className="lg:col-span-5 w-full bg-gray-50 p-8 md:p-10 rounded-[2.5rem] sticky top-8 border border-gray-100">
             <h2 className="text-2xl font-black uppercase tracking-tighter text-black mb-8">Order Summary</h2>
             
-            {/* Lista de productos minimizada */}
             <div className="space-y-4 py-4 mb-8 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
               {cartItems.map((item) => (
                 <div key={item.id} className="flex items-center gap-4">
@@ -219,12 +245,11 @@ export default function CheckoutPage() {
               <span className="text-4xl font-black text-black tracking-tighter leading-none">${finalTotal.toFixed(2)}</span>
             </div>
 
-            {/* Botón enlazado al formulario de la izquierda */}
             <button 
               form="checkout-form" 
               type="submit"
               disabled={isProcessing}
-              className="w-full h-16 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-2xl flex items-center justify-center gap-3 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="w-full h-16 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-gray-800 transition-colors shadow-2xl flex items-center justify-center gap-3 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {isProcessing ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

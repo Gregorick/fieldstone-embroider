@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { ChevronRight, Filter, X, Plus } from "lucide-react";
+import { ChevronRight, Filter, X } from "lucide-react";
 import { useCart } from "../context/CartContext";
 
 // --- MAPA DE COLORES EXTENDIDO ---
@@ -23,6 +23,17 @@ const getHexForColor = (colorName: string) => {
   const name = colorName.split('/')[0].trim();
   return colorMap[name] || colorMap[colorName] || "#E5E7EB"; 
 };
+
+// ✅ LISTA COMPLETA DE MARCAS DEL CATÁLOGO
+const ALL_CATALOG_BRANDS = [
+  "A4", "Allmade", "BELLA+CANVAS", "Brooks Brothers", "Bulwark", "Carhartt",
+  "Champion", "Comfort Colors", "CornerStone", "Cotopaxi", "District",
+  "Eddie Bauer", "Gildan", "Jerzees", "Mercer+Mettle", "New Era",
+  "Next Level Apparel", "Nike", "OGIO", "Outdoor Research", "Port & Co",
+  "Port Authority", "Rabbit Skins", "Red Kap", "Richardson", "Russell Outdoors",
+  "Spacecraft", "Sport-Tek", "Stanley/Stella", "tentree", "The North Face",
+  "Tommy Bahama", "TravisMathew", "Volunteer Knitwear", "Wink"
+].sort();
 
 // --- COMPONENTE DE IMAGEN ---
 function CatalogImage({ imageUrl, title }: { imageUrl: string; title: string }) {
@@ -68,26 +79,48 @@ function ProductsContent() {
   const [dynamicCategories, setDynamicCategories] = useState<string[]>([]);
   const [dynamicBrands, setDynamicBrands] = useState<string[]>([]);
 
-  const { addToCart } = useCart();
+  // 🔥 LA SOLUCIÓN: Este useEffect escucha si la URL cambia mientras ya estás en la página
+  useEffect(() => {
+    const currentCategory = searchParams.get("category") || "";
+    const currentBrand = searchParams.get("brand") || "";
+    
+    setSelectedCategory(currentCategory);
+    setSelectedBrand(currentBrand);
+    setCurrentPage(1); // Resetea la página a 1 al cambiar de filtro por el menú
+  }, [searchParams]);
 
   useEffect(() => {
     async function fetchFilters() {
+      // 1. Fetch de categorías
       const { data: catData } = await supabase.rpc('get_unique_categories');
       if (catData) setDynamicCategories(catData.map((c: any) => c.category_name));
 
-      let brandQuery = supabase.from("products_unique_styles").select("brand").not("brand", "is", null);
-      if (selectedCategory) brandQuery = brandQuery.eq("category", selectedCategory);
-      const { data: brandData } = await brandQuery.limit(500);
-      if (brandData) {
-        setDynamicBrands(Array.from(new Set(brandData.map(b => b.brand))).slice(0, 10));
+      // 2. Fetch de marcas (MODIFICADO)
+      if (!selectedCategory) {
+        // Si no hay categoría seleccionada, usamos la lista completa garantizada
+        setDynamicBrands(ALL_CATALOG_BRANDS);
+      } else {
+        // Si seleccionó una categoría, buscamos en DB solo las marcas de esa categoría
+        const { data: brandData } = await supabase
+          .from("products_unique_styles")
+          .select("brand")
+          .eq("category", selectedCategory)
+          .not("brand", "is", null)
+          .limit(5000);
+          
+        if (brandData) {
+          setDynamicBrands(Array.from(new Set(brandData.map(b => b.brand))).sort());
+        }
       }
 
+      // 3. Fetch de tallas
       const { data: sizesData } = await supabase.rpc('get_dynamic_sizes', {
         p_category: selectedCategory || null,
         p_brand: selectedBrand || null
       });
       if (sizesData) setDynamicSizes(sizesData);
 
+      // 4. Fetch de colores
       const { data: colorsData } = await supabase.rpc('get_dynamic_colors', {
         p_category: selectedCategory || null,
         p_brand: selectedBrand || null
@@ -95,7 +128,7 @@ function ProductsContent() {
       if (colorsData) setDynamicColors(colorsData);
     }
     fetchFilters();
-  }, [selectedCategory, selectedBrand]);
+  }, [selectedCategory]); // Solo reacciona a cambios de categoría para las marcas
 
   useEffect(() => {
     async function fetchProducts() {
@@ -305,26 +338,7 @@ function ProductsContent() {
                     
                     <div className="relative aspect-[3/4] bg-[#F3F3F3] rounded-2xl overflow-hidden mb-4 group-hover:shadow-md transition-all duration-500 flex items-center justify-center">
                       <CatalogImage imageUrl={product.image_url} title={product.title} />
-                      
-                      <button 
-                        onClick={(e) => {
-                          e.preventDefault(); 
-                          e.stopPropagation(); 
-                          addToCart({
-                            id: `${product.id}-default`,
-                            productId: product.id,
-                            title: product.title || product.product_name || product.name,
-                            price: product.price || 0,
-                            image: product.image_url || `https://cdnm.sanmar.com/catalog/images/${product.style}.jpg`,
-                            size: product.size || "Default", 
-                            color: product.color_name || "Default",
-                            quantity: 1
-                          });
-                        }}
-                        className="absolute bottom-4 left-4 right-4 bg-[#8012d8] text-white text-[10px] font-black uppercase tracking-[0.2em] py-4 rounded-[1rem] opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 z-20 flex items-center justify-center gap-2 shadow-2xl hover:bg-black"
-                      >
-                        Add to cart <Plus size={14} />
-                      </button>
+                      {/* BOTÓN ELIMINADO */}
                     </div>
 
                     <div className="px-1">
@@ -334,9 +348,9 @@ function ProductsContent() {
                       <h3 className="text-[12px] font-bold text-gray-900 leading-tight group-hover:text-[#8012d8] transition-colors uppercase tracking-tight line-clamp-2">
                         {product.title || product.product_name}
                       </h3>
-                      <p className="text-[12px] font-black text-black mt-2 tracking-tighter">
+                      {/* <p className="text-[12px] font-black text-black mt-2 tracking-tighter">
                         ${product.price}
-                      </p>
+                      </p> */}
                     </div>
                   </Link>
                 ))}

@@ -121,14 +121,14 @@ export default function Footer() {
           </p>
           
           <div className="flex gap-4 items-center grayscale opacity-30">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" className="h-3" />
-            <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" alt="PayPal" className="h-3" />
-            <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard" className="h-3" />
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Visa_Inc._logo_%282005%E2%80%932014%29.svg/960px-Visa_Inc._logo_%282005%E2%80%932014%29.svg.png?_=20170118154621" alt="Visa" className="h-5" />
+            <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" alt="PayPal" className="h-5" />
+            <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard" className="h-10" />
           </div>
 
           <button 
             onClick={scrollToTop}
-            className="md:absolute right-0 bottom-0 p-4 bg-zinc-900 hover:bg-blue-600 text-white transition-all duration-300 group shadow-2xl"
+            className="md:absolute right-0 bottom-20 p-4 bg-zinc-900 hover:bg-blue-600 text-white transition-all duration-300 group shadow-2xl"
             title="Scroll to Top"
           >
             <ChevronUp size={20} className="group-hover:-translate-y-1 transition-transform" />

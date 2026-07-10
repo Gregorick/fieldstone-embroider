@@ -3,11 +3,17 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-// ✅ 1. Importamos el Contexto del Carrito y el ícono Plus
-import { useCart } from "@/app/context/CartContext"; 
-import { Plus } from "lucide-react";
 
-// --- COMPONENTE DE IMAGEN (Restauramos tu fórmula que funcionaba para los estilos) ---
+// ✅ LISTA ESTRICTA DE CATEGORÍAS PRINCIPALES
+const ALLOWED_CATEGORIES = [
+  "Polos/Knits",
+  "Caps",
+  "Sweatshirts/Fleece",
+  "T-Shirts",
+  "Activewear"
+];
+
+// --- COMPONENTE DE IMAGEN ---
 function ProductImage({ style, title, dbImage }: { style: string; title: string; dbImage?: string }) {
   const cleanStyle = style?.trim() || "";
   
@@ -30,7 +36,7 @@ function ProductImage({ style, title, dbImage }: { style: string; title: string;
   };
 
   if (hasError) return (
-    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 border border-gray-100 rounded-3xl">
+    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 border border-gray-100 rounded-2xl">
       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic">No Image</span>
     </div>
   );
@@ -39,7 +45,7 @@ function ProductImage({ style, title, dbImage }: { style: string; title: string;
     <img 
       src={imgSrc} 
       alt={title}
-      className="w-full h-full object-contain mix-blend-multiply transition-all duration-700 group-hover:scale-110 p-8"
+      className="w-full h-full object-contain mix-blend-multiply transition-transform duration-700 group-hover:scale-105 p-6"
       onError={handleError}
     />
   );
@@ -50,17 +56,13 @@ interface LoopProductsProps {
 }
 
 export default function LoopProducts({ onCategoriesFetched }: LoopProductsProps) {
-  const [categoriesData, setCategoriesData] = useState<{ [key: string]: any[] }>({});
+  const [displayCategories, setDisplayCategories] = useState<{ originalCategory: string, cleanCategory: string, product: any }[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // ✅ 2. Instanciamos el carrito
-  const { addToCart } = useCart();
-  
-  // EL ESCUDO CONTRA EL BUCLE INFINITO
   const hasFetchedRef = useRef(false);
 
   useEffect(() => {
-    async function fetchProductsLoop() {
+    async function fetchCategoryCards() {
       if (hasFetchedRef.current) return;
 
       setLoading(true);
@@ -69,29 +71,49 @@ export default function LoopProducts({ onCategoriesFetched }: LoopProductsProps)
           .from("products_unique_styles")
           .select("*")
           .not("category", "is", null)
-          .limit(500);
+          .limit(1000); 
 
-        if (error) {
-          console.error("Error cargando productos del Home:", error.message);
-          throw error;
-        }
+        if (error) throw error;
 
         if (allProducts && allProducts.length > 0) {
-          const grouped: { [key: string]: any[] } = {};
-          const categories = Array.from(new Set(allProducts.map(p => p.category))).slice(0, 5);
+          const uniqueCategories = Array.from(new Set(allProducts.map(p => p.category).filter(Boolean)));
+
+          // 1. Filtramos las categorías principales permitidas
+          const prioritizedCategories = uniqueCategories.filter(cat => 
+            ALLOWED_CATEGORIES.includes(cat.trim())
+          );
+
+          // 2. Filtramos el resto de categorías que NO están en la lista principal
+          const otherCategories = uniqueCategories.filter(cat => 
+            !ALLOWED_CATEGORIES.includes(cat.trim())
+          );
+
+          // 3. Calculamos cuántas faltan para llegar a 8 y completamos
+          const extraNeeded = 8 - prioritizedCategories.length;
+          const selectedCategories = [
+            ...prioritizedCategories,
+            ...otherCategories.slice(0, extraNeeded)
+          ];
 
           if (!hasFetchedRef.current) {
-            onCategoriesFetched(categories);
+            onCategoriesFetched(selectedCategories.map(cat => cat.trim()));
             hasFetchedRef.current = true;
           }
 
-          categories.forEach(cat => {
-            grouped[cat] = allProducts
-              .filter(p => p.category === cat)
-              .sort(() => 0.5 - Math.random()) 
-              .slice(0, 10);
-          });
-          setCategoriesData(grouped);
+          const mappedData = selectedCategories.map(cat => {
+            const catProducts = allProducts.filter(p => p.category === cat);
+            const randomProduct = catProducts.length > 0 
+              ? catProducts[Math.floor(Math.random() * catProducts.length)] 
+              : null;
+            
+            return {
+              originalCategory: cat, // Mantiene el espacio oculto para que el enlace funcione en la URL
+              cleanCategory: cat.trim(), // Nombre limpio para mostrar visualmente
+              product: randomProduct
+            };
+          }).filter(item => item.product !== null);
+
+          setDisplayCategories(mappedData);
         }
       } catch (err) {
         console.error("Error en Loop:", err);
@@ -99,87 +121,64 @@ export default function LoopProducts({ onCategoriesFetched }: LoopProductsProps)
         setLoading(false);
       }
     }
-    fetchProductsLoop();
+    fetchCategoryCards();
     
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) return (
     <div className="py-40 text-center">
-      <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <div className="inline-block w-8 h-8 border-4 border-[#8012d8] border-t-transparent rounded-full animate-spin mb-4"></div>
       <p className="font-black uppercase tracking-[0.3em] text-gray-400 text-xs">Loading Collections</p>
     </div>
   );
 
   return (
-    <div className="space-y-32 pb-32">
-      {Object.entries(categoriesData).map(([category, products]) => (
-        <section key={category} className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 border-b border-gray-100 pb-6 gap-4">
-            <div>
-              <span className="color-primary text-[10px] font-black uppercase tracking-[0.4em]">Featured</span>
-              <h2 className="text-5xl font-black uppercase tracking-tighter text-black mt-2 leading-none">
-                {category}
-              </h2>
+    <section className="container mx-auto px-4 py-16 mb-20 border-t border-gray-100">
+      
+      {/* TÍTULO DE LA SECCIÓN */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 pb-4 gap-4">
+        <div>
+          <span className="text-[#8012d8] text-[10px] font-black uppercase tracking-[0.4em]">
+            Outfit Your Team
+          </span>
+          <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-black mt-2 leading-[1.1] max-w-2xl">
+            Custom T-Shirts & Promotional Products
+          </h2>
+        </div>
+        <Link 
+          href="/products" 
+          className="text-xs font-black uppercase tracking-widest text-gray-400 hover:text-[#8012d8] transition-colors whitespace-nowrap"
+        >
+          View All Products →
+        </Link>
+      </div>
+
+      {/* GRID DE CATEGORÍAS */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+        {displayCategories.map((item, index) => (
+          <Link 
+            key={index} 
+            href={`/products?category=${encodeURIComponent(item.originalCategory)}`} 
+            className="group block"
+          >
+            {/* Contenedor de la Imagen */}
+            <div className="relative aspect-square bg-[#F3F4F6] rounded-2xl overflow-hidden mb-4 transition-all duration-300 group-hover:shadow-md flex items-center justify-center border border-transparent group-hover:border-gray-200 group-hover:bg-white group-hover:-translate-y-1">
+              <ProductImage 
+                style={item.product.style} 
+                dbImage={item.product.image_url}
+                title={item.cleanCategory} 
+              />
             </div>
-            <Link 
-              href={`/products?category=${encodeURIComponent(category)}`} 
-              className="text-xs font-black uppercase tracking-widest text-gray-400 hover:color-primary transition-all"
-            >
-              Explore All →
-            </Link>
-          </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8">
-            {products.map((product) => (
-              <Link key={product.id} href={`/products/${product.id}`} className="group block">
-                {/* Contenedor de la Imagen */}
-                <div className="relative aspect-[3/4] bg-[#F3F3F3] rounded-[2rem] overflow-hidden mb-6 transition-all duration-500 group-hover:shadow-xl border border-transparent group-hover:border-gray-200 group-hover:bg-white group-hover:-translate-y-1 flex items-center justify-center">
-                  
-                  <ProductImage 
-                    style={product.style} 
-                    dbImage={product.image_url}
-                    title={product.title || product.product_name || product.name} 
-                  />
-
-                  {/* ✅ 3. EL NUEVO BOTÓN "QUICK ADD" */}
-                  <button 
-                    onClick={(e) => {
-                      e.preventDefault(); // Evita que se abra la página del producto
-                      e.stopPropagation(); // Evita que el clic "burbujee" al Link
-                      addToCart({
-                        id: `${product.id}-default`,
-                        productId: product.id,
-                        title: product.title || product.product_name || product.name,
-                        price: product.price || 0,
-                        image: product.image_url || `https://cdnm.sanmar.com/catalog/images/${product.style}.jpg`,
-                        size: product.size || "Default", 
-                        color: product.color_name || "Default",
-                        quantity: 1
-                      });
-                    }}
-                    className="absolute bottom-4 left-4 right-4 bg-[#8012d8] text-white text-[10px] font-black uppercase tracking-[0.2em] py-4 rounded-[1rem] opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 z-20 flex items-center justify-center gap-2 shadow-2xl hover:bg-blue-600"
-                  >
-                    Add to cart <Plus size={14} />
-                  </button>
-
-                </div>
-
-                {/* Textos inferiores */}
-                <div className="px-2">
-                  <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">{product.style}</span>
-                  <h3 className="text-[13px] font-black uppercase tracking-tight text-gray-900 line-clamp-1 group-hover:text-[#8012d8] transition-colors mt-1">
-                    {product.title || product.product_name || product.name}
-                  </h3>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                    {product.brand}
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
+            {/* Texto Inferior Limpio */}
+            <div className="px-1">
+              <h3 className="text-[16px] font-semibold text-gray-900 group-hover:text-[#8012d8] transition-colors">
+                {item.cleanCategory}
+              </h3>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
