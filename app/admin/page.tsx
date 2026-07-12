@@ -133,7 +133,7 @@ export default function AdminDashboard() {
   };
 
   const chartData = useMemo(() => {
-    const data = [];
+    const data: any[] = [];
     const now = new Date();
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
