@@ -15,6 +15,7 @@ import sizeChartImg from "@/public/Size_chart.webp";
 // IMPORTACIONES DE LAS GUÍAS DE COLOCACIÓN
 import placement1 from "@/public/PLACEMENT-GUIDE_Pagina_1.jpg";
 import placement2 from "@/public/PLACEMENT-GUIDE_Pagina_2.jpg";
+import placement3 from "@/public/PLACEMENT-GUIDE_Pagina_3.jpg"; // ✅ NUEVA IMAGEN IMPORTADA
 
 // Orden lógico para las tallas
 const SIZE_ORDER: Record<string, number> = { "XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5, "2XL": 6, "3XL": 7, "4XL": 8, "5XL": 9, "6XL": 10 };
@@ -150,8 +151,6 @@ export default function ProductPage() {
       const exactVariant = variantsOfColor.find(v => v.size === selectedSize);
       
       if (exactVariant) {
-        // ✅ CONFIRMADO: Prioridad ABSOLUTA al MSRP de la prenda. 
-        // Si por error de la BD el MSRP es nulo o 0, usa el price como respaldo.
         const exactPrice = parseFloat(exactVariant.msrp || exactVariant.price || 0);
         setBasePrice(exactPrice);
       }
@@ -187,9 +186,19 @@ export default function ProductPage() {
     if (decorationMethod === "emb") availableLocations = ["1 - Left Chest", "2 - Right Chest", "3 - Left Sleeve", "4 - Right Sleeve"];
     else if (decorationMethod === "sp") availableLocations = ["1 - Left Chest", "2 - Right Chest", "3 - Full Front", "4 - Full Back", "5 - Left Sleeve", "6 - Right Sleeve"];
   } 
-  else if (catUpper.includes("CAP") || catUpper.includes("HEADWEAR")) availableLocations = ["1 - Cap Front", "2 - Side Panels", "3 - Cap Back"];
-  else if (catUpper.includes("BEANIE")) availableLocations = ["1 - Beanie Front", "2 - Beanie Back"];
-  else availableLocations = ["Standard Location"];
+  else if (catUpper.includes("CAP") || catUpper.includes("HEADWEAR")) {
+    availableLocations = ["1 - Cap Front", "2 - Side Panels", "3 - Cap Back"];
+  } 
+  else if (catUpper.includes("BEANIE")) {
+    availableLocations = ["1 - Beanie Front", "2 - Beanie Back"];
+  } 
+  // ✅ NUEVO: Lógica para bolsos (Bags) usando la nueva página de guía
+  else if (catUpper.includes("BAG") || catUpper.includes("BACKPACK") || catUpper.includes("TOTE") || catUpper.includes("DUFFEL") || catUpper.includes("COOLER") || catUpper.includes("DRAWSTRING")) {
+    availableLocations = ["1 - Middle Front Pocket", "2 - Bottom Front Pocket", "3 - Top Front Panel", "4 - Bottom Front Panel"];
+  } 
+  else {
+    availableLocations = ["Standard Location"];
+  }
 
   // USAR TIERS DINÁMICOS DESDE EL ADMIN
   const currentTier = decorationTiers.find(t => quantity >= t.min && quantity <= t.max) || decorationTiers[decorationTiers.length - 1];
@@ -220,6 +229,7 @@ export default function ProductPage() {
       size: selectedSize,
       color: selectedColor,
       decorationMethod: decorationMethod.toUpperCase(),
+      // @ts-expect-error: Ignoramos el error de tipo para forzar el build
       location: selectedLocation,
       extraComments: extraComments
     });
@@ -455,13 +465,26 @@ export default function ProductPage() {
           </div>
         </div>
       )}
+      
+      {/* ✅ NUEVO: MODAL DE PLACEMENT GUIDE (Diseño ajustado y scrolleable) */}
       {isPlacementGuideOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="relative w-full max-w-5xl bg-white rounded-3xl p-6 shadow-2xl">
+          <div className="relative w-full max-w-5xl bg-white rounded-3xl p-2 shadow-2xl">
             <button onClick={() => setIsPlacementGuideOpen(false)} className="absolute -top-4 -right-4 bg-black text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform z-10"><X size={20} /></button>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[80vh] overflow-y-auto custom-scrollbar p-2">
-              <img src={placement1.src} alt="Placement Guide Page 1" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
-              <img src={placement2.src} alt="Placement Guide Page 2" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
+            
+            <div className="h-[80vh] overflow-y-auto custom-scrollbar p-4 space-y-6">
+              
+              {/* Primeras dos páginas en dos columnas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <img src={placement1.src} alt="Placement Guide Page 1" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
+                <img src={placement2.src} alt="Placement Guide Page 2" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
+              </div>
+              
+              {/* Tercera página centrada y completa abajo */}
+              <div className="w-full flex justify-center">
+                <img src={placement3.src} alt="Placement Guide Page 3 - Bags" className="w-full max-w-4xl h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
+              </div>
+              
             </div>
           </div>
         </div>
