@@ -2,23 +2,28 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js'; 
 
-// ✅ CONFIGURACIÓN DEL CLIENTE ADMIN (Para saltar el RLS)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 const recentlyProcessedOrders = new Set<string>();
 
 export async function POST(req: Request) {
   try {
+    // ✅ 1. INICIALIZAMOS ADENTRO PARA EVITAR CRASHES 500 EN CPANEL
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Faltan credenciales de Supabase en el servidor.");
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
     const payload = await req.json();
     console.log("\n--- 📥 NUEVO WEBHOOK DE CLOVER RECIBIDO ---");
 
-    // 1. GUARDAMOS EL LOG EN LA BASE DE DATOS
+    // 2. GUARDAMOS EL LOG EN LA BASE DE DATOS
     await supabaseAdmin.from('webhook_logs').insert([{ source: 'clover_order_update', payload: payload }]);
 
-    // 2. CÓDIGO DE VERIFICACIÓN
+    // 3. CÓDIGO DE VERIFICACIÓN
     if (payload.verificationCode || payload.challenge) {
       const code = payload.verificationCode || payload.challenge;
       console.log("✅ CÓDIGO DE VERIFICACIÓN RESPONDIDO:", code);
@@ -50,7 +55,7 @@ export async function POST(req: Request) {
           
           const orderData = await orderRes.json();
 
-          // ✅ 3. VALIDACIÓN DE PAGO (A prueba de mayúsculas y minúsculas)
+          // ✅ 4. VALIDACIÓN DE PAGO (A prueba de mayúsculas y minúsculas)
           const paymentState = orderData.paymentState ? orderData.paymentState.toUpperCase() : '';
           const isPaid = paymentState === 'PAID' || orderData.state === 'locked';
           
@@ -100,7 +105,7 @@ export async function POST(req: Request) {
 
             const total = orderData.total ? (Number(orderData.total) / 100).toFixed(2) : "0.00";
 
-            // ✅ 4. ACTUALIZACIÓN AUTOMÁTICA EN SUPABASE Y OBTENER EMAIL
+            // ✅ 5. ACTUALIZACIÓN AUTOMÁTICA EN SUPABASE Y OBTENER EMAIL
             const supabaseOrderId = orderData.note || orderData.title; 
             let clientEmailAddress = 'gregorick.liriano@gmail.com'; 
 
@@ -123,7 +128,7 @@ export async function POST(req: Request) {
               console.error("❌ Excepción crítica al conectar con Supabase:", dbErr);
             }
 
-            // ✅ 5. ENVÍO DE CORREOS
+            // ✅ 6. ENVÍO DE CORREOS
             try {
               // Correo para el CLIENTE
               const clientEmail = await resend.emails.send({
@@ -183,6 +188,16 @@ export async function POST(req: Request) {
   }
 }
 
+// ✅ ESCÁNER DE DIAGNÓSTICO (Para revisar tus variables desde el navegador)
 export async function GET() {
-  return NextResponse.json({ message: "El endpoint del Webhook de Clover está activo y escuchando pagos." });
+  return NextResponse.json({ 
+    status: "Activo",
+    diagnostico_variables: {
+      supabase_url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabase_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      resend_api_key: !!process.env.RESEND_API_KEY,
+      clover_merchant_id: !!process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID,
+      clover_token: !!process.env.CLOVER_PRIVATE_TOKEN
+    }
+  });
 }
