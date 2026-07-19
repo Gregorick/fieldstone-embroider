@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useCart } from "../context/CartContext";
-import { X, Plus, Minus, Trash2, ShoppingBag, Lock } from "lucide-react"; // ✅ Lock importado correctamente
+import { X, Plus, Minus, Trash2, ShoppingBag, Lock } from "lucide-react";
 import Link from "next/link";
 
 export default function SlideOutCart() {
@@ -100,10 +100,11 @@ export default function SlideOutCart() {
                           </p>
                         )}
                         
-                        {item.location && (
-                          <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-start gap-1 line-clamp-2" title={item.location}>
+                        {/* Corrección aplicada aquí con (item as any) */}
+                        {(item as any).location && (
+                          <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-start gap-1 line-clamp-2" title={(item as any).location}>
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1 flex-shrink-0"></span> 
-                            LOC: <span className="text-black leading-tight">{item.location}</span>
+                            LOC: <span className="text-black leading-tight">{(item as any).location}</span>
                           </p>
                         )}
                       </div>

@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { 
   LayoutDashboard, ShoppingBag, FolderTree, User, Users, UserPlus,
   LogOut, Search, Eye, Edit, Check, X, Camera, Save, Lock,
-  Package, ChevronDown, Download, BarChart3, Trash2, DollarSign
+  Package, ChevronDown, Download, BarChart3, Trash2, DollarSign, Truck
 } from "lucide-react";
 
 // Tiers por defecto en caso de que la DB esté vacía
@@ -36,6 +36,13 @@ export default function AdminDashboard() {
   // --- ESTADOS: ÓRDENES ---
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  
+  // --- ESTADOS: ENVÍO (EASYPOST) ---
+  const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
+  const [packageLength, setPackageLength] = useState<number>(12);
+  const [packageWidth, setPackageWidth] = useState<number>(12);
+  const [packageHeight, setPackageHeight] = useState<number>(2);
+  const [packageWeight, setPackageWeight] = useState<number>(80);
 
   // --- ESTADOS: CATEGORÍAS Y MARCAS ---
   const [allCategories, setAllCategories] = useState<string[]>([]);
@@ -105,8 +112,6 @@ export default function AdminDashboard() {
     if (settings) {
       setVisibleCategories(settings.visible_categories || cats);
       setVisibleBrands(settings.visible_brands || brands);
-      
-      // Precios
       if (settings.small_order_fee_threshold) setFeeThreshold(settings.small_order_fee_threshold);
       if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
       if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
@@ -118,7 +123,6 @@ export default function AdminDashboard() {
     setLoading(false);
   }
 
-  // --- FUNCIONES DE ÓRDENES ---
   const fetchOrders = async () => {
     const { data } = await supabase.from("orders").select(`*, order_items (*)`).order("created_at", { ascending: false });
     if (data) setOrders(data);
@@ -130,6 +134,60 @@ export default function AdminDashboard() {
       setOrders(orders.map(o => o.id === orderId ? { ...o, order_status: newStatus } : o));
       if (selectedOrder && selectedOrder.id === orderId) setSelectedOrder({ ...selectedOrder, order_status: newStatus });
     } else alert("Error updating order: " + error.message);
+  };
+
+  // --- FUNCIÓN DE GENERAR ETIQUETA UPS (CORREGIDA) ---
+  const handleGenerateLabel = async () => {
+    if (!packageWeight || !packageLength || !packageWidth || !packageHeight) {
+      alert("Please fill in all package dimensions and weight.");
+      return;
+    }
+    if (!confirm(`Generate a UPS label for a ${packageLength}x${packageWidth}x${packageHeight} package weighing ${packageWeight}oz?`)) return;
+    
+    setIsGeneratingLabel(true);
+    try {
+      // ✅ SE LE AÑADIÓ /fieldstone-embroider A LA RUTA
+      const res = await fetch('/fieldstone-embroider/api/easypost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          orderId: selectedOrder.id, 
+          weightOz: packageWeight,
+          length: packageLength,
+          width: packageWidth,
+          height: packageHeight
+        }) 
+      });
+      
+      // Validación estricta para atrapar errores 404 antes de procesar JSON
+      const contentType = res.headers.get("content-type");
+      if (!res.ok) {
+        if (contentType && contentType.includes("application/json")) {
+          const errData = await res.json();
+          throw new Error(errData.error || "Error de la API de envíos");
+        } else {
+          throw new Error("Endpoint no encontrado (404). Verifica que la carpeta /api/easypost existe.");
+        }
+      }
+      
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      
+      setSelectedOrder({
+        ...selectedOrder, 
+        tracking_number: data.trackingNumber,
+        shipping_label_url: data.labelUrl,
+        tracking_url: data.trackingUrl,
+        order_status: 'shipped'
+      });
+      fetchOrders(); 
+      alert("Success! UPS Label generated and order marked as Shipped.");
+
+    } catch (error: any) {
+      alert("Failed to generate label: " + error.message);
+    } finally {
+      setIsGeneratingLabel(false);
+    }
   };
 
   const chartData = useMemo(() => {
@@ -149,7 +207,6 @@ export default function AdminDashboard() {
   }, [orders]);
   const maxRevenue = Math.max(...chartData.map(d => d.revenue), 100);
 
-  // --- FUNCIONES DE USUARIOS ---
   const fetchUsers = async () => {
     const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (data) setUsersList(data);
@@ -174,7 +231,6 @@ export default function AdminDashboard() {
     } catch (err: any) { alert("Error: " + err.message); } finally { setLoading(false); }
   };
 
-  // --- CONFIGURACIÓN DE TIENDA Y PRECIOS ---
   const toggleCategoryVisibility = (cat: string) => setVisibleCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   const toggleBrandVisibility = (brand: string) => setVisibleBrands(prev => prev.includes(brand) ? prev.filter(b => b !== brand) : [...prev, brand]);
   
@@ -372,7 +428,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ✅ NUEVA PESTAÑA: REGLAS DE PRECIOS */}
+        {/* PESTAÑA: REGLAS DE PRECIOS */}
         {activeTab === "pricing" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
             <div className="flex justify-between items-center mb-8">
@@ -382,7 +438,6 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Explanation / Instrucciones */}
             <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 mb-8 flex gap-4 items-start">
               <div className="bg-blue-600 p-2 rounded-full text-white mt-1"><DollarSign size={20} /></div>
               <div>
@@ -393,11 +448,9 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Small Order Fee Configuration */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Small Order Threshold ($)</label>
-                <p className="text-[10px] text-gray-500 mb-3">If the cart total is below this amount, the fee applies.</p>
                 <div className="relative">
                   <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="number" value={feeThreshold} onChange={(e) => setFeeThreshold(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm font-black text-black outline-none focus:border-blue-600 transition-colors"/>
@@ -405,7 +458,6 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Small Order Fee Amount ($)</label>
-                <p className="text-[10px] text-gray-500 mb-3">The exact fee amount charged to the customer.</p>
                 <div className="relative">
                   <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm font-black text-black outline-none focus:border-blue-600 transition-colors"/>
@@ -413,11 +465,9 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Decoration Tiers Table */}
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-6 border-b border-gray-100 bg-gray-50">
                 <h3 className="text-lg font-black uppercase tracking-widest text-black">Decoration Price Tiers</h3>
-                <p className="text-xs font-medium text-gray-500 mt-1">Adjust the Added Price per item depending on volume.</p>
               </div>
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -477,9 +527,7 @@ export default function AdminDashboard() {
                         <div><p className="text-xs font-bold text-black uppercase tracking-wider">{u.first_name || "Unknown"} {u.last_name || ""}</p><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1">ID: {u.id.substring(0, 8)}</p></div>
                       </td>
                       <td className="p-6"><p className="text-xs font-bold text-gray-600">{u.email || "No email recorded"}</p></td>
-                      <td className="p-6">
-                        <select value={u.role || 'customer'} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={u.id === adminUser.id} className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-gray-50 border-gray-200 disabled:opacity-50"><option value="customer">Customer</option><option value="admin">Admin</option></select>
-                      </td>
+                      <td className="p-6"><select value={u.role || 'customer'} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={u.id === adminUser.id} className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-gray-50 border-gray-200 disabled:opacity-50"><option value="customer">Customer</option><option value="admin">Admin</option></select></td>
                       <td className="p-6"><p className="text-xs font-bold text-gray-500">{new Date(u.created_at).toLocaleDateString()}</p></td>
                       <td className="p-6 text-right"><button onClick={() => deleteUser(u.id)} disabled={u.id === adminUser.id} className="p-2 bg-white border border-gray-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"><Trash2 size={16} /></button></td>
                     </tr>
@@ -532,11 +580,7 @@ export default function AdminDashboard() {
             <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
             <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 space-y-8">
               <div className="flex items-center gap-8 pb-8 border-b border-gray-100">
-                <div className="relative w-24 h-24">
-                  <div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-200">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div>
-                  <button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button>
-                  <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
-                </div>
+                <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-200">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
                 <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-400 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
               </div>
               <div className="grid grid-cols-2 gap-6">
@@ -549,7 +593,6 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
-
       </main>
 
       {/* --- MODAL DETALLES DE LA ORDEN --- */}
@@ -560,12 +603,84 @@ export default function AdminDashboard() {
               <div><h3 className="text-xl font-black uppercase tracking-tighter text-black">Order Details</h3><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">ID: {selectedOrder.id}</p></div>
               <button onClick={() => setSelectedOrder(null)} className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors"><X size={20}/></button>
             </div>
+            
             <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-8">
+              
+              {/* ✅ SECCIÓN DE ENVÍO Y UPS (EASYPOST) CON DIMENSIONES Y PESO */}
+              <div className="bg-gray-50 border border-gray-200 p-6 rounded-2xl">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2">
+                    <Truck size={18} /> Shipping & Fulfillment
+                  </h4>
+                  <span className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-full ${selectedOrder.tracking_number ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {selectedOrder.tracking_number ? 'Label Created' : 'Awaiting Fulfillment'}
+                  </span>
+                </div>
+
+                {selectedOrder.tracking_number ? (
+                  <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <div>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">UPS Tracking Number</p>
+                      <a href={selectedOrder.tracking_url} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-600 hover:underline">
+                        {selectedOrder.tracking_number}
+                      </a>
+                    </div>
+                    <a 
+                      href={selectedOrder.shipping_label_url} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-800 transition-colors flex items-center gap-2"
+                    >
+                      🖨️ Print Label
+                    </a>
+                  </div>
+                ) : (
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 border-dashed">
+                    <p className="text-xs font-bold text-gray-500 mb-6">
+                      Ready to ship? Enter the package details to generate a UPS label. Customs forms will be added automatically for international orders.
+                    </p>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Length (in)</label>
+                        <input type="number" min="1" value={packageLength} onChange={(e) => setPackageLength(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Width (in)</label>
+                        <input type="number" min="1" value={packageWidth} onChange={(e) => setPackageWidth(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Height (in)</label>
+                        <input type="number" min="1" value={packageHeight} onChange={(e) => setPackageHeight(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Weight (oz)</label>
+                        <input type="number" min="1" value={packageWeight} onChange={(e) => setPackageWeight(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleGenerateLabel}
+                      disabled={isGeneratingLabel}
+                      className="w-full py-4 bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-700 transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isGeneratingLabel ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Package size={16} />
+                      )}
+                      {isGeneratingLabel ? "Processing Label..." : "Generate UPS Label"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className={`grid grid-cols-2 ${selectedOrder.payment_id ? 'md:grid-cols-3' : ''} gap-8 p-6 bg-blue-50/50 border border-blue-100 rounded-2xl`}>
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Customer Name</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_name}</p></div>
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Contact Email</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_email}</p></div>
                 {selectedOrder.payment_id && (<div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Clover Trans. ID</p><p className="text-sm font-bold text-blue-900 truncate" title={selectedOrder.payment_id}>{selectedOrder.payment_id}</p></div>)}
               </div>
+
               <div>
                 <h4 className="text-sm font-black uppercase tracking-widest text-black mb-4 border-b border-gray-100 pb-2">Products ({selectedOrder.order_items?.length})</h4>
                 <div className="space-y-4">
@@ -592,6 +707,16 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
+            
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+              <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Total Paid</p><p className="text-2xl font-black text-black">${Number(selectedOrder.total_amount).toFixed(2)}</p></div>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Quick Status Update:</span>
+                <select value={selectedOrder.order_status} onChange={(e) => updateOrderStatus(selectedOrder.id, e.target.value)} className="px-4 py-3 bg-white border border-gray-200 rounded-xl text-xs font-bold uppercase tracking-widest outline-none focus:border-black cursor-pointer shadow-sm">
+                  <option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="completed">Completed</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -600,10 +725,7 @@ export default function AdminDashboard() {
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => setIsUserModalOpen(false)}>
           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="text-xl font-black uppercase tracking-tighter text-black">Create New User</h3>
-              <button onClick={() => setIsUserModalOpen(false)} className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors"><X size={20}/></button>
-            </div>
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="text-xl font-black uppercase tracking-tighter text-black">Create New User</h3><button onClick={() => setIsUserModalOpen(false)} className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors"><X size={20}/></button></div>
             <form onSubmit={handleCreateUser} className="p-8 space-y-6">
                <div className="grid grid-cols-2 gap-4">
                  <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">First Name *</label><input type="text" required value={newUser.first_name} onChange={e => setNewUser({...newUser, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
@@ -621,4 +743,4 @@ export default function AdminDashboard() {
       )}
     </div>
   );
-}
+} 
