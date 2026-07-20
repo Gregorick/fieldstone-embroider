@@ -192,7 +192,6 @@ export default function ProductPage() {
   else if (catUpper.includes("BEANIE")) {
     availableLocations = ["1 - Beanie Front", "2 - Beanie Back"];
   } 
-  // ✅ NUEVO: Lógica para bolsos (Bags) usando la nueva página de guía
   else if (catUpper.includes("BAG") || catUpper.includes("BACKPACK") || catUpper.includes("TOTE") || catUpper.includes("DUFFEL") || catUpper.includes("COOLER") || catUpper.includes("DRAWSTRING")) {
     availableLocations = ["1 - Middle Front Pocket", "2 - Bottom Front Pocket", "3 - Top Front Panel", "4 - Bottom Front Panel"];
   } 
@@ -281,7 +280,27 @@ export default function ProductPage() {
           <div className="lg:col-span-6">
             <span className="text-[10px] font-black uppercase tracking-[0.3em] color-primary block mb-2">{product.brand}</span>
             <h1 className="text-4xl lg:text-5xl font-black uppercase tracking-tighter text-black mb-4 leading-none">{product.title || product.product_name}</h1>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-8 border-b border-gray-100 pb-8">Style: {product.style}</p>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Style: {product.style}</p>
+
+            {/* ✅ DESCRIPCIÓN DEL PRODUCTO */}
+            {product.description && (
+              <div className="mb-6">
+                <p className="text-xs font-medium text-gray-600 leading-relaxed">
+                  {product.description}
+                </p>
+              </div>
+            )}
+
+            {/* ✅ PESO POR PIEZA */}
+            {product.weight && (
+              <div className="mb-6">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  Piece Weight: <span className="text-black">{product.weight} lbs</span>
+                </span>
+              </div>
+            )}
+
+            <div className="w-full border-b border-gray-100 mb-8 pb-4"></div>
 
             {/* COLORES */}
             <div className="mb-6">
@@ -466,7 +485,6 @@ export default function ProductPage() {
         </div>
       )}
       
-      {/* ✅ NUEVO: MODAL DE PLACEMENT GUIDE (Diseño ajustado y scrolleable) */}
       {isPlacementGuideOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="relative w-full max-w-5xl bg-white rounded-3xl p-2 shadow-2xl">
@@ -474,13 +492,11 @@ export default function ProductPage() {
             
             <div className="h-[80vh] overflow-y-auto custom-scrollbar p-4 space-y-6">
               
-              {/* Primeras dos páginas en dos columnas */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <img src={placement1.src} alt="Placement Guide Page 1" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
                 <img src={placement2.src} alt="Placement Guide Page 2" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
               </div>
               
-              {/* Tercera página centrada y completa abajo */}
               <div className="w-full flex justify-center">
                 <img src={placement3.src} alt="Placement Guide Page 3 - Bags" className="w-full max-w-4xl h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
               </div>
