@@ -10,12 +10,15 @@ export async function POST(req: Request) {
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://fieldstone.com"; 
     
-    if (!supabaseUrl || !supabaseServiceKey) throw new Error("Faltan credenciales de Supabase.");
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Faltan credenciales de Supabase en el servidor.");
+    }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     const payload = await req.json();
+    await supabaseAdmin.from('webhook_logs').insert([{ source: 'clover_raw_payload', payload: payload }]);
 
     if (payload.verificationCode || payload.challenge) {
       return NextResponse.json({ verificationCode: payload.verificationCode || payload.challenge }, { status: 200 });
@@ -29,10 +32,13 @@ export async function POST(req: Request) {
       
       for (const event of events) {
         if (event.type === "UPDATE" && event.objectId?.startsWith("O:")) {
-          const orderId = event.objectId.replace("O:", ""); // ESTE ES EL CLOVER ID
+          const orderId = event.objectId.replace("O:", "");
           
           const orderRes = await fetch(`https://apisandbox.dev.clover.com/v3/merchants/${process.env.CLOVER_MERCHANT_ID}/orders/${orderId}?expand=lineItems,payments`, {
-            headers: { 'Authorization': `Bearer ${process.env.CLOVER_API_TOKEN}`, 'Content-Type': 'application/json' }
+            headers: { 
+              'Authorization': `Bearer ${process.env.CLOVER_API_TOKEN}`, 
+              'Content-Type': 'application/json'
+            }
           });
           
           if (!orderRes.ok) continue; 
@@ -55,53 +61,77 @@ export async function POST(req: Request) {
             let dbOrder = null;
 
             try {
-              // ⏳ ESPERA PARA QUE LA WEB GUARDE LA ORDEN
+              // ⏳ ESPERA ESTRATÉGICA Y BÚSQUEDA EXHAUSTIVA
               await new Promise(resolve => setTimeout(resolve, 3000));
               const exactTotal = (Number(orderData.total) / 100).toFixed(2);
               
-              // 🔄 BÚSQUEDA DEL "ORDERS" PARA HACER EL PUENTE
               for (let i = 0; i < 4; i++) {
+                
+                // 1. Buscar por ID Directo
                 if (supabaseOrderId) {
                   const { data } = await supabaseAdmin.from('orders').select('*').eq('id', supabaseOrderId).single();
                   if (data) { dbOrder = data; break; }
                 }
                 
+                // 2. Buscar por Payment ID
                 const possibleIds = [orderId];
-                if (orderData.payments?.elements) orderData.payments.elements.forEach((p: any) => possibleIds.push(p.id));
-                
+                if (orderData.payments?.elements) {
+                    orderData.payments.elements.forEach((p: any) => possibleIds.push(p.id));
+                }
                 const { data: payData } = await supabaseAdmin.from('orders').select('*').in('payment_id', possibleIds);
-                if (payData && payData.length > 0) { dbOrder = payData[0]; supabaseOrderId = dbOrder.id; break; }
+                if (payData && payData.length > 0) {
+                    dbOrder = payData[0];
+                    supabaseOrderId = dbOrder.id;
+                    break;
+                }
 
+                // 3. Buscar por Monto Exacto (IGNORANDO LAS YA PAGADAS PARA EVITAR CHOQUES)
                 if (!dbOrder) {
-                  const { data: recentOrders } = await supabaseAdmin.from('orders').select('*').order('created_at', { ascending: false }).limit(10);
+                  const { data: recentOrders } = await supabaseAdmin.from('orders')
+                    .select('*')
+                    .is('payment_id', null) // Busca órdenes sin ID de Clover asignado
+                    .order('created_at', { ascending: false })
+                    .limit(15);
+                    
                   if (recentOrders) {
-                    const matchedOrder = recentOrders.find((o: any) => Number(o.total_amount).toFixed(2) === exactTotal && o.payment_status !== 'paid');
-                    if (matchedOrder) { dbOrder = matchedOrder; supabaseOrderId = dbOrder.id; break; }
+                    const matchedOrder = recentOrders.find((o: any) => Number(o.total_amount).toFixed(2) === exactTotal);
+                    if (matchedOrder) {
+                      dbOrder = matchedOrder;
+                      supabaseOrderId = dbOrder.id;
+                      break; 
+                    }
                   }
                 }
+
                 if (i < 3) await new Promise(resolve => setTimeout(resolve, 3000));
               }
 
-              // ✅ PUENTE CRUZADO: ACTUALIZAMOS CLOVER ID Y BUSCAMOS LOS ITEMS
+              // ✅ ORDEN ENCONTRADA: EXTRAER DETALLES Y GUARDAR ID DE CLOVER
               if (dbOrder) {
                 clientEmailAddress = dbOrder.customer_email || clientEmailAddress;
                 clientName = dbOrder.customer_name || 'Cliente';
                 totalToDisplay = dbOrder.total_amount ? Number(dbOrder.total_amount).toFixed(2) : totalToDisplay;
                 
-                // ACTUALIZAMOS LA TABLA ORDERS CON EL ID DE CLOVER PARA QUE EL ADMIN LO VEA
+                // ACTUALIZAMOS LA TABLA ORDERS CON EL ID DE CLOVER
                 await supabaseAdmin.from('orders').update({ payment_status: 'paid', order_status: 'processing', payment_id: orderId }).eq('id', supabaseOrderId);
                 
-                // EXTRAEMOS LOS PRODUCTOS DE LA SEGUNDA TABLA
+                // DOBLE BÚSQUEDA DE TABLA (order_items o item_orders)
                 let { data: itemsData, error: err1 } = await supabaseAdmin.from('order_items').select('*').eq('order_id', supabaseOrderId);
+                
                 if (err1 || !itemsData || itemsData.length === 0) {
                    const { data: itemsData2 } = await supabaseAdmin.from('item_orders').select('*').eq('order_id', supabaseOrderId);
                    if (itemsData2) itemsData = itemsData2;
                 }
-                if (itemsData && itemsData.length > 0) dbItems = itemsData;
-              }
-            } catch (dbErr) { console.error(dbErr); }
 
-            // SI FALLA, RESCATE BÁSICO DE CLOVER
+                if (itemsData && itemsData.length > 0) {
+                  dbItems = itemsData;
+                }
+              }
+            } catch (dbErr) { 
+              await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_catch', payload: { error: String(dbErr) } }]);
+            }
+
+            // FALLBACK EXTREMO (Solo si Supabase falla)
             if (dbItems.length === 0 && orderData.lineItems?.elements) {
                 const itemMap = new Map();
                 orderData.lineItems.elements.forEach((item: any) => {
@@ -120,7 +150,7 @@ export async function POST(req: Request) {
 
             let unifiedItemsHtml = '';
 
-            // GENERADOR DE TARJETAS HTML PREMIUM
+            // GENERADOR DE TARJETAS HTML PREMIUM (Para Cliente y Admin)
             if (dbItems.length > 0) {
               unifiedItemsHtml = dbItems.map((item: any) => {
                 const logoUrl = item.custom_logo_url || '';
@@ -188,11 +218,13 @@ export async function POST(req: Request) {
                 `;
               }).join('');
             } else {
-              unifiedItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red; border-radius: 8px;">⚠️ Error visual: Detalles no procesados, revisar admin.</div>`;
+              unifiedItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red; border-radius: 8px;">⚠️ Error: Detalles visuales en proceso de sincronización.</div>`;
             }
 
             try {
+              // ==========================================
               // CORREO 1: PARA EL CLIENTE
+              // ==========================================
               const clientEmail = await resend.emails.send({
                 from: 'Fieldstone Embroidery <onboarding@resend.dev>',
                 to: clientEmailAddress, 
@@ -206,7 +238,9 @@ export async function POST(req: Request) {
                       <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
                       <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
                       
-                      <div style="margin-bottom: 25px;">${unifiedItemsHtml}</div>
+                      <div style="margin-bottom: 25px;">
+                        ${unifiedItemsHtml}
+                      </div>
 
                       <div style="text-align: right; padding: 20px 0; border-top: 2px solid #f3f4f6; margin-bottom: 25px;">
                         <span style="font-size: 16px; color: #374151; font-weight: 900; text-transform: uppercase;">Total Pagado:</span>
@@ -215,14 +249,18 @@ export async function POST(req: Request) {
 
                       <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; border-left: 4px solid #000;">
                         <p style="margin: 0; color: #374151; font-size: 14px;"><strong>ID de Transacción:</strong> <span style="font-family: monospace; font-size: 15px;">${orderId}</span></p>
-                        <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;"><strong>ID de Pedido Interno:</strong> <span style="font-family: monospace; font-size: 15px;">${dbOrder ? dbOrder.id : 'Procesando...'}</span></p>
+                        <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;"><strong>ID de Pedido Interno:</strong> <span style="font-family: monospace; font-size: 15px;">${dbOrder ? dbOrder.id : (supabaseOrderId || 'En proceso')}</span></p>
                       </div>
                     </div>
                   </div>
                 `
               });
 
+              if (clientEmail.error) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_client', payload: clientEmail.error }]);
+
+              // ==========================================
               // CORREO 2: PARA EL ADMIN
+              // ==========================================
               const adminEmail = await resend.emails.send({
                 from: 'Notificaciones <onboarding@resend.dev>',
                 to: 'gregorick.liriano@gmail.com', 
@@ -263,21 +301,31 @@ export async function POST(req: Request) {
                         Products (${dbItems.length})
                       </h3>
                       
-                      <div style="margin-top: 16px;">${unifiedItemsHtml}</div>
+                      <div style="margin-top: 16px;">
+                        ${unifiedItemsHtml}
+                      </div>
                     </div>
                   </div>
                 `
               });
 
-            } catch (emailErr) { console.error(emailErr); }
+              if (adminEmail.error) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_admin', payload: adminEmail.error }]);
+
+            } catch (emailErr) {
+               await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_critical', payload: { error: String(emailErr) } }]);
+            }
           }
         }
       }
     }
     return NextResponse.json({ status: 'ok' }, { status: 200 });
   } catch (error) {
-    return NextResponse.json({ error: 'Fallo al procesar' }, { status: 500 });
+    return NextResponse.json({ error: 'Fallo al procesar webhook' }, { status: 500 });
   }
 }
 
-export async function GET() { return NextResponse.json({ status: "Activo" }); }
+export async function GET() {
+  return NextResponse.json({ 
+    status: "Activo"
+  });
+}
