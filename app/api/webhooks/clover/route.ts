@@ -34,7 +34,8 @@ export async function POST(req: Request) {
         if (event.type === "UPDATE" && event.objectId?.startsWith("O:")) {
           const orderId = event.objectId.replace("O:", "");
           
-          const orderRes = await fetch(`https://apisandbox.dev.clover.com/v3/merchants/${process.env.CLOVER_MERCHANT_ID}/orders/${orderId}?expand=lineItems`, {
+          // ⚠️ IMPORTANTE: Agregamos "payments" al expand para obtener todos los IDs posibles
+          const orderRes = await fetch(`https://apisandbox.dev.clover.com/v3/merchants/${process.env.CLOVER_MERCHANT_ID}/orders/${orderId}?expand=lineItems,payments`, {
             headers: { 
               'Authorization': `Bearer ${process.env.CLOVER_API_TOKEN}`, 
               'Content-Type': 'application/json'
@@ -61,29 +62,45 @@ export async function POST(req: Request) {
             let clientName = 'Cliente';
             let dbItems: any[] = [];
             let totalToDisplay = orderData.total ? (Number(orderData.total) / 100).toFixed(2) : "0.00";
+            let dbOrder = null;
 
             try {
-              // ⏳ PAUSA DE 4 SEGUNDOS: Evita la "Condición de Carrera" esperando que la web guarde la orden.
-              await new Promise(resolve => setTimeout(resolve, 4000));
+              // 🔄 SISTEMA DE BÚSQUEDA INTELIGENTE (Polling)
+              // Clover es muy rápido. Buscamos hasta 5 veces (esperando 3 segs) dándole tiempo a tu web de guardar la orden.
+              for (let i = 0; i < 5; i++) {
+                
+                if (supabaseOrderId) {
+                  const { data } = await supabaseAdmin.from('orders').select('*').eq('id', supabaseOrderId).single();
+                  if (data) { dbOrder = data; break; }
+                }
+                
+                // Recopilamos el Order ID y todos los Payment IDs de Clover
+                const possibleIds = [orderId];
+                if (orderData.payments && orderData.payments.elements) {
+                    orderData.payments.elements.forEach((p: any) => possibleIds.push(p.id));
+                }
 
-              // Si Clover no nos mandó el ID, lo buscamos usando el payment_id
-              if (!supabaseOrderId) {
-                 const { data: existingOrder } = await supabaseAdmin.from('orders').select('id').eq('payment_id', orderId).single();
-                 if (existingOrder) supabaseOrderId = existingOrder.id;
+                // Buscamos en tu base de datos si alguno de esos IDs ya se guardó
+                const { data } = await supabaseAdmin.from('orders').select('*').in('payment_id', possibleIds);
+                if (data && data.length > 0) {
+                    dbOrder = data[0];
+                    supabaseOrderId = dbOrder.id;
+                    break; // ¡Encontrado! Rompemos el ciclo.
+                }
+
+                // Si no lo encuentra, espera 3 segundos antes del siguiente intento
+                if (i < 4) await new Promise(resolve => setTimeout(resolve, 3000));
               }
 
-              if (supabaseOrderId) {
-                const { data: dbOrder } = await supabaseAdmin.from('orders').select('*').eq('id', supabaseOrderId).single();
+              // SI ENCONTRAMOS LA ORDEN EN SUPABASE
+              if (dbOrder) {
+                clientEmailAddress = dbOrder.customer_email || clientEmailAddress;
+                clientName = dbOrder.customer_name || 'Cliente';
+                totalToDisplay = dbOrder.total_amount ? Number(dbOrder.total_amount).toFixed(2) : totalToDisplay;
                 
-                if (dbOrder) {
-                  clientEmailAddress = dbOrder.customer_email || clientEmailAddress;
-                  clientName = dbOrder.customer_name || 'Cliente';
-                  totalToDisplay = dbOrder.total_amount ? Number(dbOrder.total_amount).toFixed(2) : totalToDisplay;
-                  
-                  const { data: itemsData } = await supabaseAdmin.from('order_items').select('*').eq('order_id', supabaseOrderId);
-                  if (itemsData && itemsData.length > 0) {
-                    dbItems = itemsData;
-                  }
+                const { data: itemsData } = await supabaseAdmin.from('order_items').select('*').eq('order_id', supabaseOrderId);
+                if (itemsData && itemsData.length > 0) {
+                  dbItems = itemsData;
                 }
 
                 await supabaseAdmin
@@ -95,19 +112,16 @@ export async function POST(req: Request) {
                await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_catch', payload: { error: String(dbErr) } }]);
             }
 
-            // 🛡️ SISTEMA DE RESCATE: Si la DB falló, usamos los items de Clover directamente limpiando el prefijo [4x]
+            // 🛡️ SISTEMA DE RESCATE: Si después de 15 segundos la BD sigue sin responder, usamos los datos de Clover.
             if (dbItems.length === 0 && orderData.lineItems?.elements) {
                 const itemMap = new Map();
                 orderData.lineItems.elements.forEach((item: any) => {
                     let name = item.name || "Producto sin nombre";
-                    name = name.replace(/^\[\d+x\]\s*/, ''); // Magia: Borra el [4x] de Clover
+                    name = name.replace(/^\[\d+x\]\s*/, ''); // Borra el prefijo feo [4x]
                     const note = item.note || "";
                     const key = `${name}-${note}`;
-                    
                     let qty = 1;
-                    if (item.unitQty !== undefined && item.unitQty !== null) {
-                        qty = Number(item.unitQty) >= 1000 ? Number(item.unitQty) / 1000 : Number(item.unitQty);
-                    }
+                    if (item.unitQty !== undefined && item.unitQty !== null) qty = Number(item.unitQty) >= 1000 ? Number(item.unitQty) / 1000 : Number(item.unitQty);
 
                     if (itemMap.has(key)) {
                         itemMap.get(key).quantity += qty;
@@ -116,8 +130,9 @@ export async function POST(req: Request) {
                             product_name: name,
                             quantity: qty,
                             unit_price: (item.price / 100).toFixed(2),
-                            size: note, // Usamos la nota de Clover como detalle
+                            size: note,
                             decoration_method: '',
+                            location: '',
                             custom_logo_url: ''
                         });
                     }
@@ -125,40 +140,11 @@ export async function POST(req: Request) {
                 dbItems = Array.from(itemMap.values());
             }
 
-            let clientItemsHtml = '';
-            let adminItemsHtml = '';
+            let unifiedItemsHtml = '';
 
             if (dbItems.length > 0) {
-              // HTML CLIENTE
-              clientItemsHtml = dbItems.map((item: any) => {
-                const unitPrice = Number(item.unit_price).toFixed(2); 
-                const lineTotal = (item.quantity * Number(item.unit_price)).toFixed(2);
-                const productUrl = item.product_id ? `${siteUrl}/products/${item.product_id}` : "#"; 
-
-                let extraDetails = '';
-                if (item.size || item.color) extraDetails += `<strong>Detalles:</strong> ${item.size || ''} ${item.color || ''}<br/>`;
-                if (item.decoration_method) extraDetails += `<strong>Método:</strong> ${item.decoration_method}<br/>`;
-                if (item.location) extraDetails += `<strong>Ubicación:</strong> ${item.location}<br/>`;
-                if (item.extra_comments) extraDetails += `<strong>Notas Adicionales:</strong> ${item.extra_comments}<br/>`;
-                if (item.custom_logo_url) extraDetails += `<strong>Logo:</strong> <a href="${item.custom_logo_url}" target="_blank" style="color: #0056b3; text-decoration: underline;">Descargar Archivo</a>`;
-
-                const noteHtml = extraDetails ? `<div style="font-size: 12px; color: #555; background-color: #f1f1f1; padding: 10px; border-radius: 6px; display: block; margin-top: 6px; line-height: 1.6;">${extraDetails}</div>` : '';
-                
-                return `
-                  <tr>
-                    <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: left;">
-                      <a href="${productUrl}" target="_blank" style="color: #111; font-size: 14px; font-weight: 900; text-decoration: underline; text-transform: uppercase;">${item.product_name}</a>
-                      ${noteHtml}
-                    </td>
-                    <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: center; color: #555; font-weight: bold;">${item.quantity}</td>
-                    <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: right; color: #555;">$${unitPrice}</td>
-                    <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: right; font-weight: 900; color: #000;">$${lineTotal}</td>
-                  </tr>
-                `;
-              }).join('');
-
-              // HTML ADMIN
-              adminItemsHtml = dbItems.map((item: any) => {
+              // Generamos UN SOLO DISEÑO PREMIUM (Tarjetas Grises) para ambos correos
+              unifiedItemsHtml = dbItems.map((item: any) => {
                 return `
                   <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; margin-bottom: 16px;">
                     <div style="display: table; width: 100%;">
@@ -174,13 +160,13 @@ export async function POST(req: Request) {
                       
                       <!-- Columna de Detalles -->
                       <div style="display: table-cell; vertical-align: top;">
-                         <a href="${siteUrl}/products/${item.product_id}" target="_blank" style="margin: 0 0 12px 0; font-size: 15px; font-weight: 900; color: #111827; text-transform: uppercase; text-decoration: none; display: block;">${item.product_name}</a>
+                         <a href="${siteUrl}/products/${item.product_id || ''}" target="_blank" style="margin: 0 0 12px 0; font-size: 15px; font-weight: 900; color: #111827; text-transform: uppercase; text-decoration: none; display: block;">${item.product_name}</a>
                          
                          <table style="width: 100%; border: none; font-size: 12px; margin-bottom: 12px; border-collapse: collapse;">
                            <tr>
                              <td style="width: 50%; padding-bottom: 10px;">
                                <span style="font-size: 9px; font-weight: 900; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px;">Size / Color:</span><br/>
-                               <span style="font-size: 13px; font-weight: 900; color: #1f2937;">${item.size || '-'} / ${item.color || '-'}</span>
+                               <span style="font-size: 13px; font-weight: 900; color: #1f2937;">${item.size || '-'} ${item.color ? '/ ' + item.color : ''}</span>
                              </td>
                              <td style="width: 50%; padding-bottom: 10px;">
                                <span style="font-size: 9px; font-weight: 900; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px;">Qty & Price:</span><br/>
@@ -217,48 +203,39 @@ export async function POST(req: Request) {
               }).join('');
 
             } else {
-              clientItemsHtml = `<tr><td colspan="4" style="padding:20px; text-align:center;">Hubo un problema al procesar los detalles visuales, pero tu orden está segura en nuestro sistema.</td></tr>`;
-              adminItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red;">⚠️ Error interno crítico: Imposible extraer productos.</div>`;
+              unifiedItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red; border-radius: 8px;">⚠️ Error interno: Detalle de productos no disponible temporalmente.</div>`;
             }
 
             try {
-              // CORREO CLIENTE
+              // ==========================================
+              // CORREO 1: PARA EL CLIENTE (Diseño Actualizado)
+              // ==========================================
               const clientEmail = await resend.emails.send({
                 from: 'Fieldstone Embroidery <onboarding@resend.dev>',
                 to: clientEmailAddress, 
                 subject: `¡Gracias por tu compra, ${clientName}! Pedido #${supabaseOrderId ? supabaseOrderId.split('-')[0] : orderId.slice(-6)}`,
                 html: `
-                  <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-                    <div style="background-color: #000; padding: 20px; text-align: center;">
+                  <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+                    <div style="background-color: #000; padding: 24px; text-align: center;">
                       <h1 style="color: #fff; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;">Fieldstone Embroidery</h1>
                     </div>
-                    <div style="padding: 30px;">
-                      <h2 style="color: #333; margin-top: 0;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
-                      <p style="color: #555; line-height: 1.6;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
+                    <div style="padding: 30px; background-color: #ffffff;">
+                      <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
+                      <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
                       
-                      <table style="width: 100%; border-collapse: collapse; margin-top: 25px; margin-bottom: 25px;">
-                        <thead>
-                          <tr style="background-color: #f8f9fa;">
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #ddd; color: #555; font-size: 11px; text-transform: uppercase; font-weight: 900;">Producto / Detalles</th>
-                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #ddd; color: #555; font-size: 11px; text-transform: uppercase; font-weight: 900;">Cant.</th>
-                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ddd; color: #555; font-size: 11px; text-transform: uppercase; font-weight: 900;">Precio Un.</th>
-                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ddd; color: #555; font-size: 11px; text-transform: uppercase; font-weight: 900;">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          ${clientItemsHtml}
-                        </tbody>
-                        <tfoot>
-                          <tr>
-                            <td colspan="3" style="padding: 15px 12px; text-align: right; font-size: 16px; color: #333; font-weight: 900;">Total Pagado:</td>
-                            <td style="padding: 15px 12px; text-align: right; font-size: 18px; color: #28a745; font-weight: 900;">$${totalToDisplay}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
+                      <!-- TARJETAS DE PRODUCTOS (Mismo UI del Admin) -->
+                      <div style="margin-bottom: 25px;">
+                        ${unifiedItemsHtml}
+                      </div>
 
-                      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #000;">
-                        <p style="margin: 0; color: #333; font-size: 14px;"><strong>ID de Transacción:</strong> <span style="font-family: monospace; font-size: 15px;">${orderId}</span></p>
-                        <p style="margin: 8px 0 0 0; color: #333; font-size: 14px;"><strong>ID de Pedido Interno:</strong> <span style="font-family: monospace; font-size: 15px;">${supabaseOrderId || 'En sistema'}</span></p>
+                      <div style="text-align: right; padding: 20px 0; border-top: 2px solid #f3f4f6; margin-bottom: 25px;">
+                        <span style="font-size: 16px; color: #374151; font-weight: 900; text-transform: uppercase;">Total Pagado:</span>
+                        <span style="font-size: 24px; color: #10b981; font-weight: 900; margin-left: 15px;">$${totalToDisplay}</span>
+                      </div>
+
+                      <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; border-left: 4px solid #000;">
+                        <p style="margin: 0; color: #374151; font-size: 14px;"><strong>ID de Transacción:</strong> <span style="font-family: monospace; font-size: 15px;">${orderId}</span></p>
+                        <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;"><strong>ID de Pedido Interno:</strong> <span style="font-family: monospace; font-size: 15px;">${supabaseOrderId || 'Procesando...'}</span></p>
                       </div>
                     </div>
                   </div>
@@ -267,39 +244,41 @@ export async function POST(req: Request) {
 
               if (clientEmail.error) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_client', payload: clientEmail.error }]);
 
-              // CORREO ADMIN 
+              // ==========================================
+              // CORREO 2: PARA EL ADMIN
+              // ==========================================
               const adminEmail = await resend.emails.send({
                 from: 'Notificaciones <onboarding@resend.dev>',
                 to: 'gregorick.liriano@gmail.com', 
                 subject: `🚨 NUEVO PEDIDO PAGADO - $${totalToDisplay} (ID: #${supabaseOrderId ? supabaseOrderId.split('-')[0] : orderId.slice(-6)})`,
                 html: `
-                  <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 2px solid #28a745; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
-                    <div style="background-color: #28a745; padding: 20px; text-align: center;">
+                  <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 2px solid #10b981; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+                    <div style="background-color: #10b981; padding: 20px; text-align: center;">
                       <h2 style="color: #fff; margin: 0; font-size: 22px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">¡Nuevo Pedido Pagado!</h2>
                     </div>
                     
                     <div style="padding: 24px;">
                       
-                      <div style="background-color: #f4fff6; padding: 20px; border-radius: 12px; border: 1px solid #c3e6cb; margin-bottom: 24px;">
+                      <div style="background-color: #ecfdf5; padding: 20px; border-radius: 12px; border: 1px solid #a7f3d0; margin-bottom: 24px;">
                         <table style="width: 100%; border: none;">
                           <tr>
-                            <td style="padding-bottom: 12px;">
-                              <span style="font-size: 10px; font-weight: 900; color: #155724; text-transform: uppercase; letter-spacing: 1px;">Monto Cobrado</span><br/>
-                              <span style="font-size: 20px; font-weight: 900; color: #155724;">$${totalToDisplay}</span>
+                            <td style="padding-bottom: 16px;">
+                              <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Monto Cobrado</span><br/>
+                              <span style="font-size: 24px; font-weight: 900; color: #065f46;">$${totalToDisplay}</span>
                             </td>
-                            <td style="padding-bottom: 12px;">
-                              <span style="font-size: 10px; font-weight: 900; color: #155724; text-transform: uppercase; letter-spacing: 1px;">ID de Pedido (Supabase)</span><br/>
-                              <span style="font-size: 15px; font-weight: 900; font-family: monospace; color: #155724;">${supabaseOrderId || 'NO ENCONTRADO'}</span>
+                            <td style="padding-bottom: 16px;">
+                              <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">ID de Pedido (Supabase)</span><br/>
+                              <span style="font-size: 15px; font-weight: 900; font-family: monospace; color: #065f46;">${supabaseOrderId || 'NO ENCONTRADO'}</span>
                             </td>
                           </tr>
                           <tr>
                             <td>
-                              <span style="font-size: 10px; font-weight: 900; color: #155724; text-transform: uppercase; letter-spacing: 1px;">Cliente</span><br/>
-                              <span style="font-size: 14px; font-weight: 700; color: #155724;">${clientName} (<a href="mailto:${clientEmailAddress}" style="color: #0c3d17;">${clientEmailAddress}</a>)</span>
+                              <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Cliente</span><br/>
+                              <span style="font-size: 14px; font-weight: 700; color: #065f46;">${clientName} (<a href="mailto:${clientEmailAddress}" style="color: #047857;">${clientEmailAddress}</a>)</span>
                             </td>
                             <td>
-                              <span style="font-size: 10px; font-weight: 900; color: #155724; text-transform: uppercase; letter-spacing: 1px;">Transacción Clover ID</span><br/>
-                              <span style="font-size: 14px; font-weight: 700; font-family: monospace; color: #155724;">${orderId}</span>
+                              <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Transacción Clover ID</span><br/>
+                              <span style="font-size: 14px; font-weight: 700; font-family: monospace; color: #065f46;">${orderId}</span>
                             </td>
                           </tr>
                         </table>
@@ -310,7 +289,7 @@ export async function POST(req: Request) {
                       </h3>
                       
                       <div style="margin-top: 16px;">
-                        ${adminItemsHtml}
+                        ${unifiedItemsHtml}
                       </div>
 
                     </div>
