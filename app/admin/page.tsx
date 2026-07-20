@@ -10,7 +10,6 @@ import {
   Package, ChevronDown, Download, BarChart3, Trash2, DollarSign, Truck
 } from "lucide-react";
 
-// Tiers por defecto en caso de que la DB esté vacía
 const DEFAULT_TIERS = [
   { min: 1, max: 11, emb: 12.45, sp: 8.00, dtf: 10.50 },
   { min: 12, max: 23, emb: 10.45, sp: 7.00, dtf: 9.45 },
@@ -27,35 +26,30 @@ export default function AdminDashboard() {
   const [mounted, setMounted] = useState(false);
   const [adminUser, setAdminUser] = useState<any>(null);
 
-  // --- ESTADOS: PERFIL ADMIN ---
   const [profile, setProfile] = useState({ first_name: "", last_name: "", avatar_url: "" });
   const [password, setPassword] = useState("");
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  // --- ESTADOS: ÓRDENES ---
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState(""); 
   
-  // --- ESTADOS: ENVÍO (EASYPOST) ---
   const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
   const [packageLength, setPackageLength] = useState<number>(12);
   const [packageWidth, setPackageWidth] = useState<number>(12);
   const [packageHeight, setPackageHeight] = useState<number>(2);
   const [packageWeight, setPackageWeight] = useState<number>(80);
 
-  // --- ESTADOS: CATEGORÍAS Y MARCAS ---
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [visibleCategories, setVisibleCategories] = useState<string[]>([]);
   const [allBrands, setAllBrands] = useState<string[]>([]);
   const [visibleBrands, setVisibleBrands] = useState<string[]>([]);
 
-  // --- ESTADOS: PRECIOS Y TARIFAS ---
   const [feeThreshold, setFeeThreshold] = useState<number>(300);
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
 
-  // --- ESTADOS: USUARIOS ---
   const [usersList, setUsersList] = useState<any[]>([]);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({ first_name: "", last_name: "", email: "", password: "", role: "customer" });
@@ -67,57 +61,30 @@ export default function AdminDashboard() {
 
   async function checkAdminAndLoadData() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (!user) return router.push("/login");
 
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !profileData || profileData.role !== 'admin') {
-      router.push("/account");
-      return;
-    }
+    const { data: profileData, error: profileError } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+    if (profileError || !profileData || profileData.role !== 'admin') return router.push("/account");
 
     setAdminUser(user);
-    setProfile({
-      first_name: profileData.first_name || "",
-      last_name: profileData.last_name || "",
-      avatar_url: profileData.avatar_url || ""
-    });
+    setProfile({ first_name: profileData.first_name || "", last_name: profileData.last_name || "", avatar_url: profileData.avatar_url || "" });
 
     fetchOrders();
     fetchUsers();
 
     const { data: catData } = await supabase.rpc("get_unique_categories");
-    let cats: string[] = [];
-    if (catData) {
-      cats = catData.map((item: any) => item.category_name);
-      setAllCategories(cats);
-    }
+    if (catData) setAllCategories(catData.map((item: any) => item.category_name));
 
     const { data: brandData } = await supabase.from("products_unique_styles").select("brand").not("brand", "is", null);
-    let brands: string[] = [];
-    if (brandData) {
-      brands = Array.from(new Set(brandData.map((item: any) => item.brand))).sort() as string[];
-      setAllBrands(brands);
-    }
+    if (brandData) setAllBrands(Array.from(new Set(brandData.map((item: any) => item.brand))).sort() as string[]);
 
-    // Cargar configuraciones globales
     const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
     if (settings) {
-      setVisibleCategories(settings.visible_categories || cats);
-      setVisibleBrands(settings.visible_brands || brands);
+      setVisibleCategories(settings.visible_categories || allCategories);
+      setVisibleBrands(settings.visible_brands || allBrands);
       if (settings.small_order_fee_threshold) setFeeThreshold(settings.small_order_fee_threshold);
       if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
       if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
-    } else {
-      setVisibleCategories(cats); 
-      setVisibleBrands(brands);
     }
 
     setLoading(false);
@@ -136,58 +103,31 @@ export default function AdminDashboard() {
     } else alert("Error updating order: " + error.message);
   };
 
-  // --- FUNCIÓN DE GENERAR ETIQUETA UPS (CORREGIDA) ---
   const handleGenerateLabel = async () => {
-    if (!packageWeight || !packageLength || !packageWidth || !packageHeight) {
-      alert("Please fill in all package dimensions and weight.");
-      return;
-    }
+    if (!packageWeight || !packageLength || !packageWidth || !packageHeight) return alert("Please fill in all package dimensions and weight.");
     if (!confirm(`Generate a UPS label for a ${packageLength}x${packageWidth}x${packageHeight} package weighing ${packageWeight}oz?`)) return;
     
     setIsGeneratingLabel(true);
     try {
-      // ✅ SE LE AÑADIÓ /fieldstone-embroider A LA RUTA
       const res = await fetch('/fieldstone-embroider/api/easypost', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          orderId: selectedOrder.id, 
-          weightOz: packageWeight,
-          length: packageLength,
-          width: packageWidth,
-          height: packageHeight
-        }) 
+        body: JSON.stringify({ orderId: selectedOrder.id, weightOz: packageWeight, length: packageLength, width: packageWidth, height: packageHeight }) 
       });
       
-      // Validación estricta para atrapar errores 404 antes de procesar JSON
       const contentType = res.headers.get("content-type");
       if (!res.ok) {
-        if (contentType && contentType.includes("application/json")) {
-          const errData = await res.json();
-          throw new Error(errData.error || "Error de la API de envíos");
-        } else {
-          throw new Error("Endpoint no encontrado (404). Verifica que la carpeta /api/easypost existe.");
-        }
+        if (contentType && contentType.includes("application/json")) throw new Error((await res.json()).error || "Error API");
+        else throw new Error("Endpoint no encontrado.");
       }
       
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
-      setSelectedOrder({
-        ...selectedOrder, 
-        tracking_number: data.trackingNumber,
-        shipping_label_url: data.labelUrl,
-        tracking_url: data.trackingUrl,
-        order_status: 'shipped'
-      });
+      setSelectedOrder({ ...selectedOrder, tracking_number: data.trackingNumber, shipping_label_url: data.labelUrl, tracking_url: data.trackingUrl, order_status: 'shipped' });
       fetchOrders(); 
       alert("Success! UPS Label generated and order marked as Shipped.");
-
-    } catch (error: any) {
-      alert("Failed to generate label: " + error.message);
-    } finally {
-      setIsGeneratingLabel(false);
-    }
+    } catch (error: any) { alert("Failed to generate label: " + error.message); } finally { setIsGeneratingLabel(false); }
   };
 
   const chartData = useMemo(() => {
@@ -205,23 +145,33 @@ export default function AdminDashboard() {
     });
     return data;
   }, [orders]);
+  
   const maxRevenue = Math.max(...chartData.map(d => d.revenue), 100);
 
-  const fetchUsers = async () => {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (data) setUsersList(data);
-  };
+  const filteredOrders = useMemo(() => {
+    if (!searchQuery) return orders;
+    const lowerQuery = searchQuery.toLowerCase();
+    return orders.filter(o => 
+      (o.payment_id && o.payment_id.toLowerCase().includes(lowerQuery)) ||
+      (o.id && o.id.toLowerCase().includes(lowerQuery)) ||
+      (o.customer_name && o.customer_name.toLowerCase().includes(lowerQuery)) ||
+      (o.customer_email && o.customer_email.toLowerCase().includes(lowerQuery))
+    );
+  }, [orders, searchQuery]);
+
+  const fetchUsers = async () => { const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }); if (data) setUsersList(data); };
+  
   const updateUserRole = async (userId: string, newRole: string) => {
     const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
-    if (!error) setUsersList(usersList.map(u => u.id === userId ? { ...u, role: newRole } : u));
-    else alert("Error: " + error.message);
+    if (!error) setUsersList(usersList.map(u => u.id === userId ? { ...u, role: newRole } : u)); else alert("Error: " + error.message);
   };
+  
   const deleteUser = async (userId: string) => {
     if (!confirm("Delete this user?")) return;
     const { error } = await supabase.from('profiles').delete().eq('id', userId);
-    if (!error) setUsersList(usersList.filter(u => u.id !== userId));
-    else alert("Error: " + error.message);
+    if (!error) setUsersList(usersList.filter(u => u.id !== userId)); else alert("Error: " + error.message);
   };
+  
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
@@ -233,33 +183,20 @@ export default function AdminDashboard() {
 
   const toggleCategoryVisibility = (cat: string) => setVisibleCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   const toggleBrandVisibility = (brand: string) => setVisibleBrands(prev => prev.includes(brand) ? prev.filter(b => b !== brand) : [...prev, brand]);
-  
-  const handleTierPriceChange = (index: number, method: 'emb' | 'sp', value: string) => {
-    const newTiers = [...pricingTiers];
-    newTiers[index][method] = Number(value);
-    setPricingTiers(newTiers);
-  };
+  const handleTierPriceChange = (index: number, method: 'emb' | 'sp', value: string) => { const newTiers = [...pricingTiers]; newTiers[index][method] = Number(value); setPricingTiers(newTiers); };
 
   const saveSettings = async () => {
     setLoading(true);
-    const { error } = await supabase.from("store_settings").upsert({
-      id: "default",
-      visible_categories: visibleCategories,
-      visible_brands: visibleBrands,
-      small_order_fee_threshold: feeThreshold,
-      small_order_fee_amount: feeAmount,
-      decoration_tiers: pricingTiers
-    });
+    const { error } = await supabase.from("store_settings").upsert({ id: "default", visible_categories: visibleCategories, visible_brands: visibleBrands, small_order_fee_threshold: feeThreshold, small_order_fee_amount: feeAmount, decoration_tiers: pricingTiers });
     setLoading(false);
-    if (error) alert("Error saving settings: " + error.message);
-    else alert("Store settings updated successfully!");
+    if (error) alert("Error saving settings: " + error.message); else alert("Store settings updated successfully!");
   };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!event.target.files?.length) return;
-      const file = event.target.files[0];
       setIsUploadingAvatar(true);
+      const file = event.target.files[0];
       const fileName = `admin-${adminUser.id}-${Math.random()}.${file.name.split('.').pop()}`;
       const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file);
       if (uploadError) throw uploadError;
@@ -275,6 +212,7 @@ export default function AdminDashboard() {
     if (password.trim() !== "") await supabase.auth.updateUser({ password });
     alert("Profile saved!"); setLoading(false);
   };
+  
   const handleLogout = async () => { await supabase.auth.signOut(); router.push("/"); };
 
   if (!mounted || loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin" /></div>;
@@ -299,30 +237,16 @@ export default function AdminDashboard() {
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
-          <button onClick={() => setActiveTab("dashboard")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "dashboard" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}>
-            <LayoutDashboard size={16} /> Dashboard
-          </button>
-          <button onClick={() => setActiveTab("orders")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "orders" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}>
-            <ShoppingBag size={16} /> Orders
-          </button>
-          <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "pricing" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}>
-            <DollarSign size={16} /> Pricing Rules
-          </button>
-          <button onClick={() => setActiveTab("categories")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "categories" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}>
-            <FolderTree size={16} /> Shop Filters
-          </button>
-          <button onClick={() => setActiveTab("users")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "users" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}>
-            <Users size={16} /> Users
-          </button>
-          <button onClick={() => setActiveTab("profile")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "profile" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}>
-            <User size={16} /> Admin Profile
-          </button>
+          <button onClick={() => setActiveTab("dashboard")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "dashboard" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><LayoutDashboard size={16} /> Dashboard</button>
+          <button onClick={() => setActiveTab("orders")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "orders" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><ShoppingBag size={16} /> Orders</button>
+          <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "pricing" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><DollarSign size={16} /> Pricing Rules</button>
+          <button onClick={() => setActiveTab("categories")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "categories" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><FolderTree size={16} /> Shop Filters</button>
+          <button onClick={() => setActiveTab("users")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "users" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><Users size={16} /> Users</button>
+          <button onClick={() => setActiveTab("profile")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "profile" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><User size={16} /> Admin Profile</button>
         </nav>
 
         <div className="p-4 border-t border-gray-800">
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all">
-            <LogOut size={16} /> Logout
-          </button>
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all"><LogOut size={16} /> Logout</button>
         </div>
       </aside>
 
@@ -385,12 +309,31 @@ export default function AdminDashboard() {
         {/* PESTAÑA: ÓRDENES */}
         {activeTab === "orders" && (
           <div className="animate-in fade-in duration-500">
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Manage Orders</h2>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Manage Orders</h2>
+              
+              <div className="relative w-full md:w-96">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Search Trans ID, Order ID, Customer..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white border border-gray-200 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                    <th className="p-6">Order ID / Date</th>
+                    <th className="p-6">Order Info</th>
                     <th className="p-6">Customer</th>
                     <th className="p-6">Total</th>
                     <th className="p-6">Status</th>
@@ -398,30 +341,49 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map(order => (
-                    <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                      <td className="p-6">
-                        <p className="text-xs font-bold text-black uppercase tracking-wider">#{order.id.split('-')[0]}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{new Date(order.created_at).toLocaleString()}</p>
-                      </td>
-                      <td className="p-6">
-                        <p className="text-xs font-bold text-black">{order.customer_name}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{order.customer_email}</p>
-                      </td>
-                      <td className="p-6 text-sm font-black text-black">${Number(order.total_amount).toFixed(2)}</td>
-                      <td className="p-6">
-                        <select 
-                          value={order.order_status} onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                          className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-gray-50 border-gray-200"
-                        >
-                          <option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="completed">Completed</option>
-                        </select>
-                      </td>
-                      <td className="p-6 text-right">
-                        <button onClick={() => setSelectedOrder(order)} className="p-2 bg-black text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"><Eye size={14} /> View</button>
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-gray-400 text-sm font-medium">
+                        No orders found matching "{searchQuery}"
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredOrders.map(order => (
+                      <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="p-6">
+                          <p className="text-xs font-bold text-black uppercase tracking-wider mb-1">
+                            Order: #{order.id.split('-')[0]}
+                          </p>
+                          
+                          {/* CLOVER TRANS ID SIEMPRE VISIBLE */}
+                          <div className="flex items-center gap-1.5 mb-2">
+                             <div className={`w-2 h-2 rounded-full shadow-sm ${order.payment_id ? 'bg-blue-500' : 'bg-amber-400'}`}></div>
+                             <p className={`text-[10px] font-black uppercase tracking-widest ${order.payment_id ? 'text-blue-600' : 'text-amber-600'}`}>
+                               CLOVER ID: {order.payment_id || "PENDIENTE"}
+                             </p>
+                          </div>
+
+                          <p className="text-[10px] text-gray-400">{new Date(order.created_at).toLocaleString()}</p>
+                        </td>
+                        <td className="p-6">
+                          <p className="text-xs font-bold text-black">{order.customer_name}</p>
+                          <p className="text-[10px] text-gray-400 mt-1">{order.customer_email}</p>
+                        </td>
+                        <td className="p-6 text-sm font-black text-black">${Number(order.total_amount).toFixed(2)}</td>
+                        <td className="p-6">
+                          <select 
+                            value={order.order_status} onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                            className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-gray-50 border-gray-200"
+                          >
+                            <option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="completed">Completed</option>
+                          </select>
+                        </td>
+                        <td className="p-6 text-right">
+                          <button onClick={() => setSelectedOrder(order)} className="p-2 bg-black text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"><Eye size={14} /> View</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -443,7 +405,7 @@ export default function AdminDashboard() {
               <div>
                 <h3 className="text-sm font-black uppercase tracking-widest text-blue-900 mb-2">How Pricing Rules Work</h3>
                 <p className="text-xs font-medium text-blue-800/80 leading-relaxed max-w-3xl">
-                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and the quantity ordered. You can also modify the threshold for the <strong>Small Order Fee</strong>. When you save these changes, the product page and the checkout cart will automatically update their calculations to reflect your new pricing immediately.
+                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and the quantity ordered. You can also modify the threshold for the <strong>Small Order Fee</strong>.
                 </p>
               </div>
             </div>
@@ -505,7 +467,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: USUARIOS */}
+        {/* PESTAÑA: USUARIOS Y DEMÁS TABS... */}
         {activeTab === "users" && (
           <div className="animate-in fade-in duration-500">
             <div className="flex justify-between items-center mb-8">
@@ -675,14 +637,20 @@ export default function AdminDashboard() {
                 )}
               </div>
 
+              {/* MODAL: INFO DEL CLIENTE Y CLOVER ID */}
               <div className={`grid grid-cols-2 ${selectedOrder.payment_id ? 'md:grid-cols-3' : ''} gap-8 p-6 bg-blue-50/50 border border-blue-100 rounded-2xl`}>
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Customer Name</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_name}</p></div>
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Contact Email</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_email}</p></div>
-                {selectedOrder.payment_id && (<div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Clover Trans. ID</p><p className="text-sm font-bold text-blue-900 truncate" title={selectedOrder.payment_id}>{selectedOrder.payment_id}</p></div>)}
+                <div>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Clover Trans. ID</p>
+                   <p className="text-sm font-bold text-blue-900 truncate" title={selectedOrder.payment_id}>
+                     {selectedOrder.payment_id || "PENDIENTE"}
+                   </p>
+                </div>
               </div>
 
               <div>
-                <h4 className="text-sm font-black uppercase tracking-widest text-black mb-4 border-b border-gray-100 pb-2">Products ({selectedOrder.order_items?.length})</h4>
+                <h4 className="text-sm font-black uppercase tracking-widest text-black mb-4 border-b border-gray-100 pb-2">Products ({selectedOrder.order_items?.length || 0})</h4>
                 <div className="space-y-4">
                   {selectedOrder.order_items?.map((item: any) => (
                     <div key={item.id} className="p-4 border border-gray-200 rounded-2xl flex gap-6 items-start bg-gray-50">
@@ -743,4 +711,4 @@ export default function AdminDashboard() {
       )}
     </div>
   );
-} 
+}

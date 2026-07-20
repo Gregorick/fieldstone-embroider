@@ -34,7 +34,7 @@ export default function AccountPage() {
   // Estado para el Lightbox del logo
   const [selectedLogoUrl, setSelectedLogoUrl] = useState<string | null>(null);
 
-  // ✅ NUEVO: Ref para el input del avatar
+  // Ref para el input del avatar
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
@@ -127,15 +127,13 @@ export default function AccountPage() {
     router.push("/");
   };
 
-  // ✅ NUEVA FUNCIÓN: Validar y Subir Avatar
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!event.target.files || event.target.files.length === 0) return;
       
       const file = event.target.files[0];
       
-      // 1. VALIDACIONES DE PESO Y TIPO
-      const MAX_SIZE_MB = 1; // Límite de 1MB
+      const MAX_SIZE_MB = 1; 
       if (file.size > MAX_SIZE_MB * 1024 * 1024) {
         alert("The image is too large. Please upload an image smaller than 1MB.");
         return;
@@ -148,7 +146,6 @@ export default function AccountPage() {
 
       setIsUploadingAvatar(true);
 
-      // 2. Crear nombre único y subir a Supabase Storage (bucket 'avatars')
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Math.random()}.${fileExt}`;
       const filePath = `${fileName}`;
@@ -159,14 +156,12 @@ export default function AccountPage() {
 
       if (uploadError) throw uploadError;
 
-      // 3. Obtener la URL pública de la imagen
       const { data: publicUrlData } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
 
       const avatarUrl = publicUrlData.publicUrl;
 
-      // 4. Actualizar la tabla profiles con la nueva URL
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: avatarUrl })
@@ -174,7 +169,6 @@ export default function AccountPage() {
 
       if (updateError) throw updateError;
 
-      // 5. Actualizar el estado local para que se vea reflejado al instante
       setProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
       alert("Profile picture updated successfully!");
 
@@ -204,7 +198,6 @@ export default function AccountPage() {
                   ) : (
                     <User size={40} className="text-gray-400" />
                   )}
-                  {/* Overlay sutil al pasar el mouse por si quiere cambiar la foto desde el circulo */}
                   <div 
                     onClick={() => avatarInputRef.current?.click()}
                     className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
@@ -213,7 +206,6 @@ export default function AccountPage() {
                   </div>
                 </div>
                 
-                {/* ✅ BOTÓN DE CÁMARA CONECTADO AL INPUT OCULTO */}
                 <button 
                   onClick={() => avatarInputRef.current?.click()}
                   disabled={isUploadingAvatar}
@@ -225,7 +217,6 @@ export default function AccountPage() {
                     <Camera size={14} />
                   )}
                 </button>
-                {/* Input file oculto */}
                 <input 
                   type="file" 
                   ref={avatarInputRef}
@@ -353,15 +344,23 @@ export default function AccountPage() {
                     {orders.map((order) => (
                       <div key={order.id} className="border border-gray-100 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition-all bg-white">
                         
-                        {/* Cabecera de la Orden */}
-                        <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
+                        {/* ✅ CABECERA DE LA ORDEN ACTUALIZADA (Grid con IDs) */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6 pb-6 border-b border-gray-100">
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Order Date</p>
-                            <p className="text-sm font-bold text-black">{new Date(order.created_at).toLocaleDateString()}</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Order ID</p>
+                            <p className="text-xs font-black text-black uppercase">#{order.id.split('-')[0]}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Trans. ID</p>
+                            <p className="text-xs font-bold text-gray-500 uppercase">{order.payment_id || "Procesando..."}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Date</p>
+                            <p className="text-xs font-bold text-black">{new Date(order.created_at).toLocaleDateString()}</p>
                           </div>
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Status</p>
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                            <span className={`inline-block px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${
                               order.order_status === 'processing' ? 'bg-blue-50 text-blue-600' : 
                               order.order_status === 'shipped' ? 'bg-amber-50 text-amber-600' : 
                               order.order_status === 'delivered' ? 'bg-green-50 text-green-600' : 
@@ -370,8 +369,8 @@ export default function AccountPage() {
                               {order.order_status}
                             </span>
                           </div>
-                          <div className="text-right">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Total Amount</p>
+                          <div className="md:text-right">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Total</p>
                             <p className="text-sm font-black text-black">${Number(order.total_amount).toFixed(2)}</p>
                           </div>
                         </div>
@@ -379,7 +378,7 @@ export default function AccountPage() {
                         {/* Detalles de los Productos (Order Items) */}
                         <div className="space-y-4">
                           {order.order_items && order.order_items.map((item: any) => (
-                            <div key={item.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-xl">
+                            <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50 p-4 rounded-xl">
                               <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-100 flex-shrink-0">
                                 <Package size={20} className="text-gray-300" />
                               </div>
@@ -395,23 +394,25 @@ export default function AccountPage() {
                                 </p>
                               </div>
 
-                              {item.custom_logo_url && (
-                                <button 
-                                  onClick={() => setSelectedLogoUrl(item.custom_logo_url)}
-                                  className="w-10 h-10 bg-white border border-gray-200 rounded-md overflow-hidden hover:border-black transition-colors shadow-sm ml-2 flex-shrink-0"
-                                  title="View Uploaded Logo"
-                                >
-                                  <img 
-                                    src={item.custom_logo_url} 
-                                    alt="Custom Logo" 
-                                    className="w-full h-full object-contain" 
-                                  />
-                                </button>
-                              )}
+                              <div className="flex items-center gap-4 sm:ml-auto">
+                                {item.custom_logo_url && (
+                                  <button 
+                                    onClick={() => setSelectedLogoUrl(item.custom_logo_url)}
+                                    className="w-10 h-10 bg-white border border-gray-200 rounded-md overflow-hidden hover:border-black transition-colors shadow-sm flex-shrink-0"
+                                    title="View Uploaded Logo"
+                                  >
+                                    <img 
+                                      src={item.custom_logo_url} 
+                                      alt="Custom Logo" 
+                                      className="w-full h-full object-contain" 
+                                    />
+                                  </button>
+                                )}
 
-                              <div className="text-right ml-2 min-w-[60px]">
-                                <p className="text-xs font-black text-black">Qty: {item.quantity}</p>
-                                <p className="text-[10px] font-bold text-gray-500 mt-1">${Number(item.unit_price).toFixed(2)} ea.</p>
+                                <div className="text-right min-w-[60px]">
+                                  <p className="text-xs font-black text-black">Qty: {item.quantity}</p>
+                                  <p className="text-[10px] font-bold text-gray-500 mt-1">${Number(item.unit_price).toFixed(2)} ea.</p>
+                                </div>
                               </div>
                             </div>
                           ))}

@@ -15,7 +15,7 @@ export default function CheckoutPage() {
   const { cartItems, cartTotal } = useCart();
   
   // Simulamos un costo de envío fijo
-  const shippingCost = cartTotal > 0 ? 15.00 : 0;
+  const shippingCost = cartTotal > 0 ? 0 : 0;
   const finalTotal = cartTotal + shippingCost;
 
   const [isProcessing, setIsProcessing] = useState(false);
