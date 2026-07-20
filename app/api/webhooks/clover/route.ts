@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://fieldstone.com"; // Ajusta a tu dominio
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://fieldstone.com"; 
     
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error("Faltan credenciales de Supabase en el servidor.");
@@ -18,8 +18,6 @@ export async function POST(req: Request) {
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     const payload = await req.json();
-
-    // Log del payload
     await supabaseAdmin.from('webhook_logs').insert([{ source: 'clover_raw_payload', payload: payload }]);
 
     if (payload.verificationCode || payload.challenge) {
@@ -58,16 +56,17 @@ export async function POST(req: Request) {
             recentlyProcessedOrders.add(orderId);
             setTimeout(() => recentlyProcessedOrders.delete(orderId), 5 * 60 * 1000); 
 
-            // 1. OBTENER EL ID DE SUPABASE 
             let supabaseOrderId = orderData.note || orderData.externalReferenceId || orderData.title || orderData.referenceId; 
-            
             let clientEmailAddress = 'gregorick.liriano@gmail.com'; 
             let clientName = 'Cliente';
             let dbItems: any[] = [];
             let totalToDisplay = orderData.total ? (Number(orderData.total) / 100).toFixed(2) : "0.00";
 
             try {
-              // Si Clover no nos manda el ID por nota, hacemos un fallback buscando por el ID de pago que la página web haya guardado
+              // ⏳ PAUSA DE 4 SEGUNDOS: Evita la "Condición de Carrera" esperando que la web guarde la orden.
+              await new Promise(resolve => setTimeout(resolve, 4000));
+
+              // Si Clover no nos mandó el ID, lo buscamos usando el payment_id
               if (!supabaseOrderId) {
                  const { data: existingOrder } = await supabaseAdmin.from('orders').select('id').eq('payment_id', orderId).single();
                  if (existingOrder) supabaseOrderId = existingOrder.id;
@@ -81,41 +80,63 @@ export async function POST(req: Request) {
                   clientName = dbOrder.customer_name || 'Cliente';
                   totalToDisplay = dbOrder.total_amount ? Number(dbOrder.total_amount).toFixed(2) : totalToDisplay;
                   
-                  // Traemos los items usando Supabase (Fuente de la verdad absoluta, ignora la de Clover)
                   const { data: itemsData } = await supabaseAdmin.from('order_items').select('*').eq('order_id', supabaseOrderId);
                   if (itemsData && itemsData.length > 0) {
                     dbItems = itemsData;
                   }
                 }
 
-                // Actualizar estado de la orden
-                const { error: dbError } = await supabaseAdmin
+                await supabaseAdmin
                   .from('orders')
                   .update({ payment_status: 'paid', order_status: 'processing', payment_id: orderId })
                   .eq('id', supabaseOrderId);
-                  
-                if (dbError) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_update', payload: dbError }]);
               }
             } catch (dbErr) {
                await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_catch', payload: { error: String(dbErr) } }]);
             }
 
-            // 2. GENERAR HTML DESDE SUPABASE DIRECTAMENTE (Garantiza todos los detalles y fotos)
+            // 🛡️ SISTEMA DE RESCATE: Si la DB falló, usamos los items de Clover directamente limpiando el prefijo [4x]
+            if (dbItems.length === 0 && orderData.lineItems?.elements) {
+                const itemMap = new Map();
+                orderData.lineItems.elements.forEach((item: any) => {
+                    let name = item.name || "Producto sin nombre";
+                    name = name.replace(/^\[\d+x\]\s*/, ''); // Magia: Borra el [4x] de Clover
+                    const note = item.note || "";
+                    const key = `${name}-${note}`;
+                    
+                    let qty = 1;
+                    if (item.unitQty !== undefined && item.unitQty !== null) {
+                        qty = Number(item.unitQty) >= 1000 ? Number(item.unitQty) / 1000 : Number(item.unitQty);
+                    }
+
+                    if (itemMap.has(key)) {
+                        itemMap.get(key).quantity += qty;
+                    } else {
+                        itemMap.set(key, {
+                            product_name: name,
+                            quantity: qty,
+                            unit_price: (item.price / 100).toFixed(2),
+                            size: note, // Usamos la nota de Clover como detalle
+                            decoration_method: '',
+                            custom_logo_url: ''
+                        });
+                    }
+                });
+                dbItems = Array.from(itemMap.values());
+            }
+
             let clientItemsHtml = '';
             let adminItemsHtml = '';
 
             if (dbItems.length > 0) {
-              
-              // ==========================================
-              // HTML: PRODUCTOS PARA EL CLIENTE (LIMPIO)
-              // ==========================================
+              // HTML CLIENTE
               clientItemsHtml = dbItems.map((item: any) => {
                 const unitPrice = Number(item.unit_price).toFixed(2); 
                 const lineTotal = (item.quantity * Number(item.unit_price)).toFixed(2);
                 const productUrl = item.product_id ? `${siteUrl}/products/${item.product_id}` : "#"; 
 
                 let extraDetails = '';
-                if (item.size || item.color) extraDetails += `<strong>Talla/Color:</strong> ${item.size || ''} ${item.color || ''}<br/>`;
+                if (item.size || item.color) extraDetails += `<strong>Detalles:</strong> ${item.size || ''} ${item.color || ''}<br/>`;
                 if (item.decoration_method) extraDetails += `<strong>Método:</strong> ${item.decoration_method}<br/>`;
                 if (item.location) extraDetails += `<strong>Ubicación:</strong> ${item.location}<br/>`;
                 if (item.extra_comments) extraDetails += `<strong>Notas Adicionales:</strong> ${item.extra_comments}<br/>`;
@@ -136,9 +157,7 @@ export async function POST(req: Request) {
                 `;
               }).join('');
 
-              // ==========================================
-              // HTML: PRODUCTOS PARA EL ADMIN (DISEÑO EXACTO AL DASHBOARD)
-              // ==========================================
+              // HTML ADMIN
               adminItemsHtml = dbItems.map((item: any) => {
                 return `
                   <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; margin-bottom: 16px;">
@@ -198,15 +217,12 @@ export async function POST(req: Request) {
               }).join('');
 
             } else {
-              // Si por algún motivo extremo la Base de datos fallara en traer los items, pone un mensaje de error visual.
-              clientItemsHtml = `<tr><td colspan="4" style="padding:20px; text-align:center;">Detalles del pedido en proceso...</td></tr>`;
-              adminItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red;">⚠️ Error interno: No se pudieron extraer los detalles de Supabase para la orden: ${supabaseOrderId}</div>`;
+              clientItemsHtml = `<tr><td colspan="4" style="padding:20px; text-align:center;">Hubo un problema al procesar los detalles visuales, pero tu orden está segura en nuestro sistema.</td></tr>`;
+              adminItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red;">⚠️ Error interno crítico: Imposible extraer productos.</div>`;
             }
 
             try {
-              // ==========================================
-              // CORREO 1: PARA EL CLIENTE
-              // ==========================================
+              // CORREO CLIENTE
               const clientEmail = await resend.emails.send({
                 from: 'Fieldstone Embroidery <onboarding@resend.dev>',
                 to: clientEmailAddress, 
@@ -251,9 +267,7 @@ export async function POST(req: Request) {
 
               if (clientEmail.error) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_client', payload: clientEmail.error }]);
 
-              // ==========================================
-              // CORREO 2: PARA EL ADMINISTRADOR (UI CLONADA DEL DASHBOARD)
-              // ==========================================
+              // CORREO ADMIN 
               const adminEmail = await resend.emails.send({
                 from: 'Notificaciones <onboarding@resend.dev>',
                 to: 'gregorick.liriano@gmail.com', 
@@ -266,7 +280,6 @@ export async function POST(req: Request) {
                     
                     <div style="padding: 24px;">
                       
-                      <!-- TARJETA DE INFO DE PAGO SUPERIOR -->
                       <div style="background-color: #f4fff6; padding: 20px; border-radius: 12px; border: 1px solid #c3e6cb; margin-bottom: 24px;">
                         <table style="width: 100%; border: none;">
                           <tr>
@@ -296,7 +309,6 @@ export async function POST(req: Request) {
                         Products (${dbItems.length})
                       </h3>
                       
-                      <!-- LISTA DE PRODUCTOS CON DISEÑO DE DASHBOARD -->
                       <div style="margin-top: 16px;">
                         ${adminItemsHtml}
                       </div>
