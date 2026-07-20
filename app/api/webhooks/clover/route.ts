@@ -36,9 +36,10 @@ export async function POST(req: Request) {
         if (event.type === "UPDATE" && event.objectId?.startsWith("O:")) {
           const orderId = event.objectId.replace("O:", "");
           
-          const orderRes = await fetch(`https://apisandbox.dev.clover.com/v3/merchants/${process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID}/orders/${orderId}?expand=lineItems`, {
+          // ✅ AHORA SÍ: Usando TUS variables exactas: CLOVER_MERCHANT_ID y CLOVER_API_TOKEN
+          const orderRes = await fetch(`https://apisandbox.dev.clover.com/v3/merchants/${process.env.CLOVER_MERCHANT_ID}/orders/${orderId}?expand=lineItems`, {
             headers: { 
-              'Authorization': `Bearer ${process.env.CLOVER_PRIVATE_TOKEN}`, 
+              'Authorization': `Bearer ${process.env.CLOVER_API_TOKEN}`, 
               'Content-Type': 'application/json'
             }
           });
@@ -154,8 +155,9 @@ export async function GET() {
       supabase_url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
       supabase_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
       resend_api_key: !!process.env.RESEND_API_KEY,
-      clover_merchant_id: !!process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID,
-      clover_token: !!process.env.CLOVER_PRIVATE_TOKEN
+      // ✅ AHORA SÍ: Escaneando tus variables exactas
+      clover_merchant_id: !!process.env.CLOVER_MERCHANT_ID,
+      clover_token: !!process.env.CLOVER_API_TOKEN
     }
   });
 }
