@@ -52,7 +52,6 @@ export async function POST(req: Request) {
           const paymentState = orderData.paymentState ? orderData.paymentState.toUpperCase() : 'NO_STATE';
           const isPaid = paymentState === 'PAID' || orderData.state === 'locked';
           
-          // Log para ver el estado real de la orden
           await supabaseAdmin.from('webhook_logs').insert([{ 
             source: 'debug_payment_state', 
             payload: { orderId: orderId, state: paymentState, isPaid: isPaid } 
@@ -64,10 +63,52 @@ export async function POST(req: Request) {
             recentlyProcessedOrders.add(orderId);
             setTimeout(() => recentlyProcessedOrders.delete(orderId), 5 * 60 * 1000); 
 
+            // 1. OBTENER EL ID DE SUPABASE DESDE CLOVER
+            const supabaseOrderId = orderData.note || orderData.externalReferenceId || orderData.title; 
+            
+            // 2. BUSCAR DATOS EN SUPABASE (orders y order_items)
+            let clientEmailAddress = 'gregorick.liriano@gmail.com'; 
+            let clientName = 'Cliente';
+            let dbItems: any[] = [];
+
+            try {
+              if (supabaseOrderId) {
+                const { data: dbOrder } = await supabaseAdmin.from('orders').select('*').eq('id', supabaseOrderId).single();
+                
+                if (dbOrder) {
+                  clientEmailAddress = dbOrder.customer_email || clientEmailAddress;
+                  clientName = dbOrder.customer_name || 'Cliente';
+                  
+                  // Traemos los items usando el nombre exacto de tu tabla
+                  const { data: itemsData } = await supabaseAdmin.from('order_items').select('*').eq('order_id', supabaseOrderId);
+                  if (itemsData && itemsData.length > 0) {
+                    dbItems = itemsData;
+                  }
+                }
+
+                // Actualizar estado de la orden
+                const { error: dbError } = await supabaseAdmin
+                  .from('orders')
+                  .update({ 
+                    payment_status: 'paid', 
+                    order_status: 'processing', 
+                    payment_id: orderId 
+                  })
+                  .eq('id', supabaseOrderId);
+                  
+                if (dbError) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_update', payload: dbError }]);
+              } else {
+                await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_missing_id', payload: { message: "No se encontró el ID de Supabase en Clover" } }]);
+              }
+            } catch (dbErr) {
+               await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_catch', payload: { error: String(dbErr) } }]);
+            }
+
+            // 3. AGRUPAR PRODUCTOS DE CLOVER
             const itemMap = new Map();
             orderData.lineItems?.elements?.forEach((item: any) => {
               const name = item.name || "Producto sin nombre";
-              const note = item.note || ""; // Aquí suele venir el método de impresión
+              const note = item.note || ""; 
               const key = `${name}-${note}`; 
               let realQuantity = 1;
               if (item.unitQty !== undefined && item.unitQty !== null) {
@@ -80,18 +121,36 @@ export async function POST(req: Request) {
               }
             });
 
-            // DISEÑO DETALLADO DE LA TABLA DE PRODUCTOS
-            const itemsList = Array.from(itemMap.values()).map((item: any) => {
-              const unitPrice = item.price ? (item.price / 100).toFixed(2) : "0.00";
+            // 4. GENERAR HTML PARA LOS CORREOS FUSIONANDO DATOS EXACTOS DE LA BD
+            const clientItemsHtml = Array.from(itemMap.values()).map((item: any, index: number) => {
+              // Buscar coincidencia en la BD
+              const dbItem = dbItems.find(dbI => dbI.product_name === item.name) || dbItems[index] || {};
+              
+              const unitPrice = item.price ? (item.price / 100).toFixed(2) : "0.00"; 
               const lineTotal = ((item.price * item.quantity) / 100).toFixed(2);
               
-              // Se resalta la nota (método de impresión, talla, etc.)
-              const noteHtml = item.note ? `<br/><span style="font-size: 12px; color: #555; background-color: #f1f1f1; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">📝 <strong>Detalles/Método:</strong> ${item.note}</span>` : '';
+              // --- VARIABLES EXACTAS SEGÚN TUS CAPTURAS DE PANTALLA ---
+              const productUrl = dbItem.product_id ? `/products/${dbItem.product_id}` : "#"; // Genera el link usando el ID
+              const logoUrl = dbItem.custom_logo_url || "";
+              const method = dbItem.decoration_method || "";
+              const location = dbItem.location || "";
+              const color = dbItem.color || "";
+              const size = dbItem.size || "";
+              const extraComments = dbItem.extra_comments || "";
+
+              let extraDetails = '';
+              if (size || color) extraDetails += `<strong>Talla/Color:</strong> ${size} ${color}<br/>`;
+              if (method) extraDetails += `<strong>Método:</strong> ${method}<br/>`;
+              if (location) extraDetails += `<strong>Ubicación:</strong> ${location}<br/>`;
+              if (extraComments) extraDetails += `<strong>Notas Adicionales:</strong> ${extraComments}<br/>`;
+              if (logoUrl) extraDetails += `<strong>Logo:</strong> <a href="${logoUrl}" target="_blank" style="color: #0056b3; text-decoration: underline;">Descargar Archivo</a>`;
+
+              const noteHtml = extraDetails ? `<div style="font-size: 12px; color: #555; background-color: #f1f1f1; padding: 6px 8px; border-radius: 4px; display: block; margin-top: 6px; line-height: 1.5;">${extraDetails}</div>` : '';
               
               return `
                 <tr>
                   <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: left;">
-                    <strong style="color: #333; font-size: 15px;">${item.name}</strong>
+                    <a href="${productUrl}" target="_blank" style="color: #333; font-size: 15px; font-weight: bold; text-decoration: underline;">${item.name}</a>
                     ${noteHtml}
                   </td>
                   <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: center; color: #555;">${item.quantity}</td>
@@ -101,34 +160,53 @@ export async function POST(req: Request) {
               `;
             }).join('');
 
+            const adminItemsHtml = Array.from(itemMap.values()).map((item: any, index: number) => {
+              const dbItem = dbItems.find(dbI => dbI.product_name === item.name) || dbItems[index] || {};
+              
+              const logoUrl = dbItem.custom_logo_url || "";
+              const method = dbItem.decoration_method || "";
+              const location = dbItem.location || "";
+              const color = dbItem.color || "";
+              const size = dbItem.size || "";
+              const extraComments = dbItem.extra_comments || "";
+
+              let extraDetails = '';
+              if (size || color) extraDetails += `Talla/Color: ${size} ${color} | `;
+              if (method) extraDetails += `Método: ${method} | `;
+              if (location) extraDetails += `Ubicación: ${location}`;
+
+              return `
+                <tr>
+                  <td style="padding: 12px; border-bottom: 1px solid #eee;">
+                    <strong style="font-size: 15px;">${item.name}</strong>
+                    ${extraDetails ? `<br/><span style="font-size: 13px; color: #b30000; font-weight: bold;">⚠️ DETALLES: ${extraDetails}</span>` : ''}
+                    ${extraComments ? `<br/><span style="font-size: 13px; color: #b30000;">📝 <strong>Notas Cliente:</strong> ${extraComments}</span>` : ''}
+                    ${logoUrl ? `<br/><span style="font-size: 13px;">📎 <a href="${logoUrl}" target="_blank" style="color: #0056b3; font-weight: bold;">Ver/Descargar Logo Original</a></span>` : ''}
+                  </td>
+                  <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center; font-size: 16px; font-weight: bold;">
+                    ${item.quantity}
+                  </td>
+                </tr>
+              `;
+            }).join('');
+
             const total = orderData.total ? (Number(orderData.total) / 100).toFixed(2) : "0.00";
-            const supabaseOrderId = orderData.note || orderData.title; 
-            let clientEmailAddress = 'gregorick.liriano@gmail.com'; 
 
             try {
-              if (supabaseOrderId) {
-                const { error: dbError } = await supabaseAdmin.from('orders').update({ payment_status: 'paid', order_status: 'processing', payment_id: orderId }).eq('id', supabaseOrderId);
-                if (dbError) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_update', payload: dbError }]);
-              } else {
-                await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_missing_id', payload: { message: "No se encontró el ID de Supabase en los datos de Clover (note o title está vacío)" } }]);
-              }
-            } catch (dbErr) {
-               await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_supabase_catch', payload: { error: String(dbErr) } }]);
-            }
-
-            try {
-              // CORREO CLIENTE DETALLADO
+              // ==========================================
+              // CORREO 1: PARA EL CLIENTE
+              // ==========================================
               const clientEmail = await resend.emails.send({
                 from: 'Fieldstone Embroidery <onboarding@resend.dev>',
                 to: clientEmailAddress, 
-                subject: `¡Gracias por tu compra! Pedido #${orderId.slice(-6)}`,
+                subject: `¡Gracias por tu compra, ${clientName}! Pedido #${supabaseOrderId ? supabaseOrderId.split('-')[0] : orderId.slice(-6)}`,
                 html: `
                   <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
                     <div style="background-color: #000; padding: 20px; text-align: center;">
                       <h1 style="color: #fff; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;">Fieldstone Embroidery</h1>
                     </div>
                     <div style="padding: 30px;">
-                      <h2 style="color: #333; margin-top: 0;">¡Hola! Hemos recibido tu pedido.</h2>
+                      <h2 style="color: #333; margin-top: 0;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
                       <p style="color: #555; line-height: 1.6;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
                       
                       <table style="width: 100%; border-collapse: collapse; margin-top: 25px; margin-bottom: 25px;">
@@ -141,7 +219,7 @@ export async function POST(req: Request) {
                           </tr>
                         </thead>
                         <tbody>
-                          ${itemsList}
+                          ${clientItemsHtml}
                         </tbody>
                         <tfoot>
                           <tr>
@@ -152,7 +230,7 @@ export async function POST(req: Request) {
                       </table>
 
                       <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #000;">
-                        <p style="margin: 0; color: #555; font-size: 14px;"><strong>ID de Transacción (Clover):</strong> <span style="font-family: monospace;">${orderId}</span></p>
+                        <p style="margin: 0; color: #555; font-size: 14px;"><strong>ID de Transacción:</strong> <span style="font-family: monospace;">${orderId}</span></p>
                         <p style="margin: 5px 0 0 0; color: #555; font-size: 14px;"><strong>ID de Pedido Interno:</strong> <span style="font-family: monospace;">${supabaseOrderId || 'N/A'}</span></p>
                       </div>
                     </div>
@@ -161,13 +239,14 @@ export async function POST(req: Request) {
               });
 
               if (clientEmail.error) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_client', payload: clientEmail.error }]);
-              else await supabaseAdmin.from('webhook_logs').insert([{ source: 'success_resend_client', payload: clientEmail.data }]);
 
-              // CORREO ADMIN DETALLADO
+              // ==========================================
+              // CORREO 2: PARA EL ADMINISTRADOR
+              // ==========================================
               const adminEmail = await resend.emails.send({
                 from: 'Notificaciones <onboarding@resend.dev>',
                 to: 'gregorick.liriano@gmail.com', 
-                subject: `🚨 NUEVO PEDIDO PAGADO - $${total} (ID: #${orderId.slice(-6)})`,
+                subject: `🚨 NUEVO PEDIDO PAGADO - $${total} (ID: #${supabaseOrderId || orderId.slice(-6)})`,
                 html: `
                   <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 2px solid #28a745; border-radius: 8px; overflow: hidden;">
                     <div style="background-color: #28a745; padding: 15px; text-align: center;">
@@ -175,31 +254,22 @@ export async function POST(req: Request) {
                     </div>
                     <div style="padding: 20px;">
                       <div style="background-color: #f4fff6; padding: 15px; border-radius: 6px; border: 1px solid #c3e6cb; margin-bottom: 20px;">
-                        <p style="margin: 0 0 8px 0; color: #155724;"><strong>Monto Cobrado:</strong> <span style="font-size: 18px;">$${total}</span></p>
-                        <p style="margin: 0 0 8px 0; color: #155724;"><strong>Transacción Clover ID:</strong> <span style="font-family: monospace;">${orderId}</span></p>
-                        <p style="margin: 0; color: #155724;"><strong>ID de Supabase:</strong> <span style="font-family: monospace;">${supabaseOrderId || 'NO ENCONTRADO'}</span></p>
+                        <p style="margin: 0 0 8px 0; color: #155724;"><strong>Monto Cobrado:</strong> <span style="font-size: 18px; font-weight: bold;">$${total}</span></p>
+                        <p style="margin: 0 0 8px 0; color: #155724;"><strong>Cliente:</strong> ${clientName} (<a href="mailto:${clientEmailAddress}">${clientEmailAddress}</a>)</p>
+                        <p style="margin: 0 0 8px 0; color: #155724;"><strong>Transacción ID:</strong> <span style="font-family: monospace;">${orderId}</span></p>
+                        <p style="margin: 0; color: #155724;"><strong>ID de Pedido (Supabase):</strong> <span style="font-family: monospace; font-weight: bold;">${supabaseOrderId || 'NO ENCONTRADO'}</span></p>
                       </div>
                       
                       <h3 style="color: #333; border-bottom: 1px solid #ccc; padding-bottom: 8px;">Lista de Trabajo a Preparar:</h3>
                       <table style="width: 100%; border-collapse: collapse;">
                         <thead>
                           <tr style="background-color: #f8f9fa;">
-                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Producto y Detalles</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Producto y Detalles Completos</th>
                             <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ddd;">Cant.</th>
                           </tr>
                         </thead>
                         <tbody>
-                          ${Array.from(itemMap.values()).map((item: any) => `
-                            <tr>
-                              <td style="padding: 10px; border-bottom: 1px solid #eee;">
-                                <strong>${item.name}</strong>
-                                ${item.note ? `<br/><span style="font-size: 12px; color: #b30000; font-weight: bold;">⚠️ MÉTODO/NOTA: ${item.note}</span>` : ''}
-                              </td>
-                              <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; font-size: 16px; font-weight: bold;">
-                                ${item.quantity}
-                              </td>
-                            </tr>
-                          `).join('')}
+                          ${adminItemsHtml}
                         </tbody>
                       </table>
                     </div>
@@ -208,7 +278,6 @@ export async function POST(req: Request) {
               });
 
               if (adminEmail.error) await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_admin', payload: adminEmail.error }]);
-              else await supabaseAdmin.from('webhook_logs').insert([{ source: 'success_resend_admin', payload: adminEmail.data }]);
 
             } catch (emailErr) {
                await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_critical', payload: { error: String(emailErr) } }]);
@@ -225,13 +294,6 @@ export async function POST(req: Request) {
 
 export async function GET() {
   return NextResponse.json({ 
-    status: "Activo",
-    diagnostico_variables: {
-      supabase_url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      supabase_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      resend_api_key: !!process.env.RESEND_API_KEY,
-      clover_merchant_id: !!process.env.CLOVER_MERCHANT_ID,
-      clover_token: !!process.env.CLOVER_API_TOKEN
-    }
+    status: "Activo"
   });
 }
