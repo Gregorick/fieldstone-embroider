@@ -132,7 +132,8 @@ export default function Header() {
         setCategories(uniqueCats);
 
         const imgMap: Record<string, string> = {};
-        const imagePromises = uniqueCats.map(async (cat) => {
+        // ✅ CORRECCIÓN DE TYPESCRIPT: Añadido tipado explícito (cat: string)
+        const imagePromises = uniqueCats.map(async (cat: string) => {
           const { data } = await supabase
             .from("products_unique_styles")
             .select("image_url")
@@ -148,9 +149,6 @@ export default function Header() {
         setCategoryImages(imgMap);
       }
 
-      // 🔥 LA SOLUCIÓN: Usamos directamente las llaves de los logos que sí existen en lugar 
-      // de buscar en los miles de productos (que se limitaban a 1000). 
-      // Esto hace que se muestren las 35 marcas inmediatamente.
       let uniqueBrands = Object.keys(brandImagesMap);
       
       if (localAllowedBrands.length > 0) {
@@ -200,7 +198,6 @@ export default function Header() {
   useEffect(() => {
     if (!activeCategory || viewState === "grid") return;
     async function fetchCategoryData() {
-      // ✅ AÑADIDO: Incluimos 'slug' en el .select() para las urls amigables
       const { data } = await supabase.from("products_unique_styles").select("id, slug, brand, image_url, title").eq("category", activeCategory).limit(100);
       
       if (data) {
@@ -235,7 +232,6 @@ export default function Header() {
       setIsSearching(true);
       const safeQuery = searchQuery.replace(/,/g, '');
       try {
-        // ✅ AÑADIDO: Incluimos 'slug' en el .select() del buscador
         const { data, error } = await supabase
           .from("products_unique_styles")
           .select("id, slug, title, style, image_url, brand, category")
@@ -423,7 +419,7 @@ export default function Header() {
               {/* PANEL DERECHO DINÁMICO */}
               <div className="flex-1 flex h-full overflow-y-auto custom-scrollbar relative">
                 
-                {/* ✅ VISTA 1: CUADRÍCULA GENERAL */}
+                {/* VISTA 1: CUADRÍCULA GENERAL */}
                 {viewState === "grid" && (
                   <div className="flex-1 p-12">
                     <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-black italic mb-10">Explore Our Shop</h2>
@@ -436,7 +432,6 @@ export default function Header() {
                           onClick={() => setIsMegaMenuOpen(false)}
                           className="p-4 bg-white border border-gray-100 hover:border-black rounded-3xl transition-all hover:shadow-xl flex flex-col items-center text-center group"
                         >
-                          {/* Contenedor de la Imagen */}
                           <div className="w-full aspect-square bg-[#f8fafc] rounded-2xl overflow-hidden mb-4 p-5 flex items-center justify-center border border-transparent group-hover:border-gray-200 transition-colors relative">
                             {categoryImages[cat] ? (
                               <img 
@@ -450,7 +445,6 @@ export default function Header() {
                             )}
                           </div>
                           
-                          {/* Título pequeño, centrado y SIN TRUNCAR */}
                           <span className="text-[10px] font-black uppercase tracking-widest text-black group-hover:text-[#8012d8] transition-colors leading-relaxed px-2 break-words">
                             {cat}
                           </span>
@@ -495,7 +489,6 @@ export default function Header() {
                       </div>
                     </div>
 
-                    {/* CUADRÍCULA DE FOTOS EN MINIATURA (3 Columnas) */}
                     <div className="mt-auto border-t border-gray-100 pt-8 pb-12">
                       <h3 className="text-[11px] font-black tracking-widest text-gray-400 mb-6 uppercase">Featured in {activeCategory}</h3>
                       {categoryFeatured.length > 0 ? (
@@ -503,7 +496,7 @@ export default function Header() {
                           {categoryFeatured.map((prod, idx) => (
                             <Link 
                               key={idx} 
-                              href={`/products/${prod.slug || prod.id}`} // ✅ AÑADIDO: Uso de slug en el Mega Menú
+                              href={`/products/${prod.slug || prod.id}`} 
                               onClick={() => setIsMegaMenuOpen(false)}
                               className="group relative aspect-square bg-[#F3F3F3] rounded-2xl overflow-hidden border border-gray-100 hover:border-black hover:shadow-lg transition-all flex items-center justify-center p-4"
                             >
@@ -585,7 +578,7 @@ export default function Header() {
                       </div>
 
                       <Link 
-                        href={`/products/${product.slug || product.id}`} // ✅ AÑADIDO: Uso de slug en el Buscador
+                        href={`/products/${product.slug || product.id}`} 
                         onClick={() => setIsSearchOpen(false)} 
                         className="px-6 py-4 bg-white border-2 border-gray-100 rounded-xl text-[10px] font-black uppercase tracking-widest text-black group-hover:bg-black group-hover:border-black group-hover:text-white transition-all flex items-center gap-2 flex-shrink-0 shadow-sm"
                       >

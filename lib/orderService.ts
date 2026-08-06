@@ -3,7 +3,13 @@ import { supabase } from "@/lib/supabase";
 // 1. FUNCIÓN PRINCIPAL PARA PROCESAR LA ORDEN
 export async function createCompleteOrder(
   cartItems: any[], 
-  customerDetails: { name: string; email: string; total: number }, 
+  customerDetails: { 
+    name: string; 
+    email: string; 
+    total: number; 
+    shipping_method?: string; 
+    shipping_cost?: number; 
+  }, 
   userId: string | null
 ) {
   try {
@@ -38,14 +44,16 @@ export async function createCompleteOrder(
       logoPublicUrl = publicUrlData.publicUrl;
     }
 
-    // 3. Crear la Orden Principal
+    // 3. Crear la Orden Principal (Incluyendo método y costo de envío)
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       user_id: userId || null,
       customer_email: customerDetails.email,
       customer_name: customerDetails.name,
       total_amount: customerDetails.total,
-      payment_status: 'paid', // O 'pending', dependiendo de tu pasarela
-      order_status: 'processing'
+      payment_status: 'paid',
+      order_status: 'processing',
+      shipping_method: customerDetails.shipping_method || 'shipping',
+      shipping_cost: customerDetails.shipping_cost || 0
     }).select().single();
 
     if (orderError) throw new Error(`Error creating order: ${orderError.message}`);
