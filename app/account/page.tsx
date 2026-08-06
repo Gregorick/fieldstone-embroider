@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { User, MapPin, Package, LogOut, Camera, Save, Plus, Trash2, X } from "lucide-react";
+import { User, MapPin, Package, LogOut, Camera, Save, Plus, Trash2, X, AlertTriangle, Star } from "lucide-react";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -24,8 +24,9 @@ export default function AccountPage() {
   // Estado para direcciones
   const [addresses, setAddresses] = useState<any[]>([]);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [newAddress, setNewAddress] = useState({
-    first_name: "", last_name: "", street: "", city: "", zip: "", phone: ""
+    first_name: "", last_name: "", street: "", city: "", state: "", zip: "", phone: ""
   });
 
   // Estado para almacenar las órdenes
@@ -69,18 +70,22 @@ export default function AccountPage() {
     getInitialData();
   }, [router]);
 
+  // 🔥 Modificado para ordenar por la predeterminada primero
   const fetchAddresses = async (userId: string) => {
-    const { data } = await supabase.from("addresses").select("*").eq("user_id", userId).order('created_at', { ascending: false });
+    const { data } = await supabase
+      .from("addresses")
+      .select("*")
+      .eq("user_id", userId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: false });
+      
     if (data) setAddresses(data);
   };
 
   const fetchOrders = async (userId: string) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("orders")
-      .select(`
-        *,
-        order_items (*)
-      `)
+      .select(`*, order_items (*)`)
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
       
@@ -103,15 +108,70 @@ export default function AccountPage() {
   const saveAddress = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.from("addresses").insert([{ ...newAddress, user_id: user.id }]);
-    
-    if (error) {
-      alert(error.message);
-    } else {
-      setIsAddingAddress(false);
-      setNewAddress({ first_name: "", last_name: "", street: "", city: "", zip: "", phone: "" });
-      fetchAddresses(user.id);
+    setAddressError(null);
+
+    try {
+      const verifyRes = await fetch('/fieldstone-embroider/api/verify-address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          street1: newAddress.street,
+          city: newAddress.city,
+          state: newAddress.state,
+          zip: newAddress.zip,
+        })
+      });
+      
+      const verifyData = await verifyRes.json();
+
+      if (!verifyData.success) {
+        setAddressError(verifyData.error);
+        setLoading(false);
+        return; 
+      }
+
+      // Si es la primera dirección que agrega, la hacemos predeterminada automáticamente
+      const isFirstAddress = addresses.length === 0;
+
+      const { error } = await supabase.from("addresses").insert([{ 
+        ...newAddress, 
+        user_id: user.id,
+        is_default: isFirstAddress 
+      }]);
+      
+      if (error) {
+        alert(error.message);
+      } else {
+        setIsAddingAddress(false);
+        setNewAddress({ first_name: "", last_name: "", street: "", city: "", state: "", zip: "", phone: "" });
+        fetchAddresses(user.id);
+      }
+    } catch (error) {
+      console.error("Error al validar/guardar la dirección:", error);
+      setAddressError("Ocurrió un error al verificar la dirección. Intenta de nuevo.");
     }
+
+    setLoading(false);
+  };
+
+  // 🔥 NUEVO: Función para establecer como predeterminada
+  const setAsDefault = async (addressId: string) => {
+    setLoading(true);
+    
+    // 1. Quitar el estado de 'default' a todas las direcciones de este usuario
+    await supabase
+      .from("addresses")
+      .update({ is_default: false })
+      .eq("user_id", user.id);
+
+    // 2. Establecer la nueva dirección como 'default'
+    await supabase
+      .from("addresses")
+      .update({ is_default: true })
+      .eq("id", addressId);
+
+    // Recargar la lista
+    fetchAddresses(user.id);
     setLoading(false);
   };
 
@@ -130,48 +190,33 @@ export default function AccountPage() {
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!event.target.files || event.target.files.length === 0) return;
-      
       const file = event.target.files[0];
-      
       const MAX_SIZE_MB = 1; 
       if (file.size > MAX_SIZE_MB * 1024 * 1024) {
         alert("The image is too large. Please upload an image smaller than 1MB.");
         return;
       }
-
       if (!file.type.startsWith('image/')) {
         alert("Please upload a valid image file (JPG, PNG, WebP).");
         return;
       }
 
       setIsUploadingAvatar(true);
-
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Math.random()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
-
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
 
-      const { data: publicUrlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
+      const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(filePath);
       const avatarUrl = publicUrlData.publicUrl;
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: avatarUrl })
-        .eq('id', user.id);
-
+      const { error: updateError } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
       if (updateError) throw updateError;
 
       setProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
       alert("Profile picture updated successfully!");
-
     } catch (error: any) {
       alert(`Error uploading avatar: ${error.message}`);
     } finally {
@@ -188,7 +233,6 @@ export default function AccountPage() {
       <div className="container mx-auto px-4 py-16 max-w-6xl flex-1">
         <div className="flex flex-col lg:flex-row gap-12">
           
-          {/* SIDEBAR DE NAVEGACIÓN */}
           <aside className="w-full lg:w-[280px] space-y-2">
             <div className="p-8 bg-gray-50 rounded-[2.5rem] mb-8 flex flex-col items-center text-center">
               <div className="relative w-24 h-24 mb-4">
@@ -217,13 +261,7 @@ export default function AccountPage() {
                     <Camera size={14} />
                   )}
                 </button>
-                <input 
-                  type="file" 
-                  ref={avatarInputRef}
-                  className="hidden" 
-                  accept="image/jpeg, image/png, image/webp" 
-                  onChange={handleAvatarUpload}
-                />
+                <input type="file" ref={avatarInputRef} className="hidden" accept="image/jpeg, image/png, image/webp" onChange={handleAvatarUpload} />
               </div>
               <h2 className="text-xl font-black uppercase tracking-tighter text-black">
                 {profile.first_name ? `${profile.first_name} ${profile.last_name}` : "Fieldstone Member"}
@@ -247,7 +285,6 @@ export default function AccountPage() {
             </nav>
           </aside>
 
-          {/* CONTENIDO DINÁMICO */}
           <div className="flex-1 bg-white">
             
             {/* PESTAÑA: PERFIL */}
@@ -280,7 +317,7 @@ export default function AccountPage() {
                 <div className="flex justify-between items-center mb-8">
                   <h3 className="text-3xl font-black uppercase tracking-tighter text-black italic leading-none">Addresses</h3>
                   {!isAddingAddress && (
-                    <button onClick={() => setIsAddingAddress(true)} className="flex items-center text-gray-500 gap-2 px-6 py-3 border-2 border-black text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all rounded-xl">
+                    <button onClick={() => { setIsAddingAddress(true); setAddressError(null); }} className="flex items-center text-gray-500 gap-2 px-6 py-3 border-2 border-black text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all rounded-xl">
                       <Plus size={14} /> Add New
                     </button>
                   )}
@@ -292,16 +329,32 @@ export default function AccountPage() {
                       <h4 className="text-lg font-black uppercase tracking-tight text-gray-400">New Address</h4>
                       <button type="button" onClick={() => setIsAddingAddress(false)} className="text-gray-400 hover:text-black"><X size={20}/></button>
                     </div>
+
+                    {addressError && (
+                      <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm flex items-start gap-4 animate-in fade-in">
+                        <div className="bg-red-100 p-2 rounded-full shadow-sm flex-shrink-0">
+                          <AlertTriangle size={18} className="text-red-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-[11px] font-bold text-red-900 mb-1 uppercase tracking-widest">Address Issue</h3>
+                          <p className="text-xs font-medium text-red-700 leading-relaxed">{addressError}</p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <input type="text" required placeholder="First Name" value={newAddress.first_name} onChange={e => setNewAddress({...newAddress, first_name: e.target.value})} className="w-full text-gray-400 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="Last Name" value={newAddress.last_name} onChange={e => setNewAddress({...newAddress, last_name: e.target.value})} className="w-full text-gray-400 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="Street Address" value={newAddress.street} onChange={e => setNewAddress({...newAddress, street: e.target.value})} className="md:col-span-2 w-full text-gray-400 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="City" value={newAddress.city} onChange={e => setNewAddress({...newAddress, city: e.target.value})} className="w-full text-gray-400 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="ZIP Code" value={newAddress.zip} onChange={e => setNewAddress({...newAddress, zip: e.target.value})} className="w-full text-gray-400 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="tel" required placeholder="Phone Number" value={newAddress.phone} onChange={e => setNewAddress({...newAddress, phone: e.target.value})} className="md:col-span-2 w-full text-gray-400 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="text" required placeholder="First Name" value={newAddress.first_name} onChange={e => setNewAddress({...newAddress, first_name: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="text" required placeholder="Last Name" value={newAddress.last_name} onChange={e => setNewAddress({...newAddress, last_name: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="text" required placeholder="Street Address" value={newAddress.street} onChange={e => setNewAddress({...newAddress, street: e.target.value})} className="md:col-span-2 w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="text" required placeholder="City" value={newAddress.city} onChange={e => setNewAddress({...newAddress, city: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="text" required placeholder="State (e.g., MA)" value={newAddress.state} onChange={e => setNewAddress({...newAddress, state: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="text" required placeholder="ZIP Code" value={newAddress.zip} onChange={e => setNewAddress({...newAddress, zip: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="tel" required placeholder="Phone Number" value={newAddress.phone} onChange={e => setNewAddress({...newAddress, phone: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
                     </div>
-                    <button type="submit" className="mt-6 w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors">
-                      {loading ? "Saving..." : "Save Address"}
+                    
+                    <button type="submit" disabled={loading} className="mt-6 w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors disabled:bg-gray-400 flex items-center justify-center gap-2">
+                      {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                      {loading ? "Verifying Address..." : "Save Address"}
                     </button>
                   </form>
                 ) : addresses.length === 0 ? (
@@ -311,17 +364,43 @@ export default function AccountPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* 🔥 Tarjetas de Direcciones Modificadas */}
                     {addresses.map((addr) => (
-                      <div key={addr.id} className="p-6 border border-gray-200 rounded-[2rem] relative group hover:border-black transition-colors">
-                        <h4 className="text-sm font-black text-gray-400 uppercase tracking-tight mb-2">{addr.first_name} {addr.last_name}</h4>
-                        <p className="text-xs text-gray-500 leading-relaxed">
-                          {addr.street}<br/>
-                          {addr.city}, {addr.zip}<br/>
-                          {addr.phone}
-                        </p>
-                        <button onClick={() => deleteAddress(addr.id)} className="absolute top-6 right-6 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all bg-white rounded-full p-1">
-                          <Trash2 size={16} />
-                        </button>
+                      <div key={addr.id} className={`p-6 border ${addr.is_default ? 'border-black shadow-md bg-gray-50' : 'border-gray-200 bg-white'} rounded-[2rem] relative group hover:border-black transition-colors flex flex-col justify-between`}>
+                        
+                        <div>
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="text-sm font-black text-gray-800 uppercase tracking-tight">{addr.first_name} {addr.last_name}</h4>
+                            
+                            {addr.is_default && (
+                              <span className="bg-black text-white text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
+                                <Star size={10} className="fill-white" /> Default
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 leading-relaxed mb-6">
+                            {addr.street}<br/>
+                            {addr.city}{addr.state ? `, ${addr.state}` : ''} {addr.zip}<br/>
+                            {addr.phone}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-gray-200 pt-4 mt-auto">
+                          {!addr.is_default ? (
+                            <button 
+                              onClick={() => setAsDefault(addr.id)} 
+                              className="text-[10px] font-black uppercase tracking-widest text-[#3b5bdb] hover:text-black transition-colors"
+                            >
+                              Set as Default
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Primary Address</span>
+                          )}
+
+                          <button onClick={() => deleteAddress(addr.id)} className="text-gray-400 hover:text-red-500 transition-colors bg-white hover:bg-red-50 rounded-full p-2" title="Delete Address">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -344,7 +423,6 @@ export default function AccountPage() {
                     {orders.map((order) => (
                       <div key={order.id} className="border border-gray-100 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition-all bg-white">
                         
-                        {/* ✅ CABECERA DE LA ORDEN ACTUALIZADA (Grid con IDs) */}
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6 pb-6 border-b border-gray-100">
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Order ID</p>
@@ -375,7 +453,6 @@ export default function AccountPage() {
                           </div>
                         </div>
                         
-                        {/* Detalles de los Productos (Order Items) */}
                         <div className="space-y-4">
                           {order.order_items && order.order_items.map((item: any) => (
                             <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50 p-4 rounded-xl">
@@ -430,7 +507,6 @@ export default function AccountPage() {
       </div>
       <Footer />
 
-      {/* LIGHTBOX MODAL PARA VER EL LOGO EN GRANDE */}
       {selectedLogoUrl && (
         <div 
           className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200" 
