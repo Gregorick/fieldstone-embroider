@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { useCart } from "../context/CartContext";
-import { X, Plus, Minus, Trash2, ShoppingBag, Lock } from "lucide-react";
+import { X, Plus, Minus, Trash2, ShoppingBag, Lock, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function SlideOutCart() {
   const { isCartOpen, setIsCartOpen, cartItems, removeFromCart, updateQuantity, cartTotal } = useCart();
   const [customLogo, setCustomLogo] = useState<string | null>(null);
+
+  // Variables para la lógica del Small Order Fee
+  const feeThreshold = 300;
+  const feeAmount = 65;
+  const amountAway = feeThreshold - cartTotal;
 
   // Cargar el logo global subido por el cliente al abrir el carrito
   useEffect(() => {
@@ -100,7 +105,6 @@ export default function SlideOutCart() {
                           </p>
                         )}
                         
-                        {/* Corrección aplicada aquí con (item as any) */}
                         {(item as any).location && (
                           <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-start gap-1 line-clamp-2" title={(item as any).location}>
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1 flex-shrink-0"></span> 
@@ -133,6 +137,20 @@ export default function SlideOutCart() {
         {/* FOOTER CARRITO (TOTALES Y CHECKOUT) */}
         {cartItems.length > 0 && (
           <div className="border-t border-gray-100 p-6 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20 relative">
+            
+            {/* ✅ ALERTA DE SMALL ORDER FEE (Dinámica según el total del carrito) */}
+            {cartTotal < feeThreshold && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
+                  Orders under ${feeThreshold} are subject to a ${feeAmount} small order processing fee at checkout. <br/>
+                  <span className="font-black text-amber-600 block mt-1">
+                    You are ${amountAway.toFixed(2)} away from waiving this fee!
+                  </span>
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-between items-end mb-4">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Subtotal</span>
               <span className="text-3xl font-black text-black tracking-tighter leading-none">${cartTotal.toFixed(2)}</span>

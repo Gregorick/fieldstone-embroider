@@ -11,7 +11,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Configuración interna faltante' }, { status: 500 });
     }
 
-    const { items, email } = await req.json(); 
+    // 🚨 Recibimos también shippingCost y smallOrderFee
+    const { items, email, shippingCost, smallOrderFee } = await req.json(); 
     
     if (!items || items.length === 0) {
       return NextResponse.json({ error: 'El carrito está vacío' }, { status: 400 });
@@ -35,20 +36,38 @@ export async function POST(req: Request) {
 
     const cloverLineItems = Array.from(itemMap.values()).map((item: any) => ({
       name: item.unitQty > 1 ? `[${item.unitQty}x] ${item.name}` : item.name,
-      price: item.price * (item.unitQty > 1 ? item.unitQty : 1), // Ajuste según la lógica de empaquetado
+      price: item.price * (item.unitQty > 1 ? item.unitQty : 1), 
       unitQty: 1, 
       note: item.note
     }));
 
-    // 3. CONFIGURACIÓN DE URL (FORZANDO LOCALHOST PARA EVITAR EL ERROR 400 DE CLOVER)
+    // 🚨 2.1. Agregamos el costo de envío si aplica (mayor a 0)
+    if (shippingCost && Number(shippingCost) > 0) {
+      cloverLineItems.push({
+        name: "Shipping Fee",
+        price: Math.round(Number(shippingCost) * 100),
+        unitQty: 1,
+        note: "Standard Delivery"
+      });
+    }
+
+    // 🚨 2.2. Agregamos el Small Order Fee si aplica (menor a $300)
+    if (smallOrderFee && Number(smallOrderFee) > 0) {
+      cloverLineItems.push({
+        name: "Small Order Processing Fee",
+        price: Math.round(Number(smallOrderFee) * 100),
+        unitQty: 1,
+        note: "Orders under $300"
+      });
+    }
+
+    // 3. CONFIGURACIÓN DE URL
     const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
     
-    // Si estamos en desarrollo, forzamos localhost. Si es producción, usa el dominio real.
     const domain = process.env.NODE_ENV === 'development' 
       ? 'https://wireless-ambiguity-bloating.ngrok-free.dev/' 
       : `https://${host}`;
       
-    // Le agregamos explícitamente el subdirectorio de tu proyecto
     const baseUrl = `${domain}/fieldstone-embroider`;
 
     // 4. PETICIÓN A CLOVER

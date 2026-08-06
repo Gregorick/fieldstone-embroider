@@ -1,6 +1,5 @@
 "use client";
 
-// ✅ 1. Importamos Suspense de react
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -8,23 +7,44 @@ import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { ChevronRight, Filter, X } from "lucide-react";
-import { useCart } from "../context/CartContext";
 
-// --- MAPA DE COLORES EXTENDIDO ---
-const colorMap: Record<string, string> = {
-  "Gray": "#A0A4A8", "Taupe": "#C6BCA1", "Beige": "#F5F5DC", "Off White": "#F8EFE6",
-  "Red": "#D9534F", "Black": "#333333", "Camel": "#B89060", "Orange": "#E69A28",
-  "Blue": "#5C92D1", "Green": "#A0CC70", "Yellow": "#EDC33A", "Brown": "#8B4513",
-  "Pink": "#F5C6CB", "White": "#FFFFFF", "Navy": "#000080", "Charcoal": "#36454F",
-  "Silver": "#C0C0C0", "Maroon": "#800000", "Purple": "#800080"
+// ✅ LISTA DE COLORES PRINCIPALES Y SU PALABRA CLAVE DE BÚSQUEDA
+const MAIN_COLORS = [
+  { name: "Blacks", base: "black", hex: "#333333" },
+  { name: "Whites", base: "white", hex: "#FFFFFF" },
+  { name: "Grays", base: "gray", hex: "#A0A4A8" },
+  { name: "Blues", base: "blue", hex: "#5C92D1" },
+  { name: "Reds", base: "red", hex: "#D9534F" },
+  { name: "Greens", base: "green", hex: "#A0CC70" },
+  { name: "Oranges", base: "orange", hex: "#E69A28" },
+  { name: "Browns", base: "brown", hex: "#8B4513" },
+  { name: "Pinks", base: "pink", hex: "#F5C6CB" },
+  { name: "Purples", base: "purple", hex: "#800080" },
+  { name: "Yellows", base: "yellow", hex: "#EDC33A" },
+  { name: "Navies", base: "navy", hex: "#000080" },
+  { name: "Charcoals", base: "charcoal", hex: "#36454F" },
+  { name: "Beiges", base: "beige", hex: "#F5F5DC" }
+];
+
+// ✅ ORDEN ESTÁNDAR DE TALLAS Y TALLAS POR DEFECTO PARA EL INICIO
+const sizeOrder = [
+  "XXS", "XS", "S", "S/M", "SM", "M", "M/L", "L", "L/XL", "XL", "2XL", "XXL", "3XL", "XXXL", "4XL", "5XL", "6XL",
+  "OSFA", "ONE SIZE", "O/S"
+];
+
+const DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "OSFA"];
+
+const sortSizes = (sizes: { name: string; count: number }[]) => {
+  return [...sizes].sort((a, b) => {
+    const indexA = sizeOrder.indexOf(a.name.toUpperCase());
+    const indexB = sizeOrder.indexOf(b.name.toUpperCase());
+    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+    if (indexA !== -1) return -1;
+    if (indexB !== -1) return 1;
+    return a.name.localeCompare(b.name);
+  });
 };
 
-const getHexForColor = (colorName: string) => {
-  const name = colorName.split('/')[0].trim();
-  return colorMap[name] || colorMap[colorName] || "#E5E7EB"; 
-};
-
-// ✅ LISTA COMPLETA DE MARCAS DEL CATÁLOGO
 const ALL_CATALOG_BRANDS = [
   "A4", "Allmade", "BELLA+CANVAS", "Brooks Brothers", "Bulwark", "Carhartt",
   "Champion", "Comfort Colors", "CornerStone", "Cotopaxi", "District",
@@ -35,7 +55,6 @@ const ALL_CATALOG_BRANDS = [
   "Tommy Bahama", "TravisMathew", "Volunteer Knitwear", "Wink"
 ].sort();
 
-// --- COMPONENTE DE IMAGEN ---
 function CatalogImage({ imageUrl, title }: { imageUrl: string; title: string }) {
   return (
     <>
@@ -52,7 +71,6 @@ function CatalogImage({ imageUrl, title }: { imageUrl: string; title: string }) 
 
 const ITEMS_PER_PAGE = 24;
 
-// ✅ 2. Renombramos tu componente principal a "ProductsContent"
 function ProductsContent() {
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") || "";
@@ -60,6 +78,7 @@ function ProductsContent() {
 
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
   // Estados de Paginación
@@ -70,8 +89,8 @@ function ProductsContent() {
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [selectedBrand, setSelectedBrand] = useState<string>(initialBrand);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
-  const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [priceRange, setPriceRange] = useState<number>(78);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]); 
+  const [priceRange, setPriceRange] = useState<number>(150);
 
   // Estados de Listas Dinámicas
   const [dynamicSizes, setDynamicSizes] = useState<{name: string, count: number}[]>([]);
@@ -79,98 +98,172 @@ function ProductsContent() {
   const [dynamicCategories, setDynamicCategories] = useState<string[]>([]);
   const [dynamicBrands, setDynamicBrands] = useState<string[]>([]);
 
-  // 🔥 LA SOLUCIÓN: Este useEffect escucha si la URL cambia mientras ya estás en la página
+  const isRootView = !selectedCategory && !selectedBrand;
+
   useEffect(() => {
     const currentCategory = searchParams.get("category") || "";
     const currentBrand = searchParams.get("brand") || "";
-    
     setSelectedCategory(currentCategory);
     setSelectedBrand(currentBrand);
-    setCurrentPage(1); // Resetea la página a 1 al cambiar de filtro por el menú
+    setCurrentPage(1);
   }, [searchParams]);
 
+  // 🔥 FETCH 1: CARGA LAS OPCIONES DEL MENÚ LATERAL
   useEffect(() => {
     async function fetchFilters() {
-      // 1. Fetch de categorías
       const { data: catData } = await supabase.rpc('get_unique_categories');
       if (catData) setDynamicCategories(catData.map((c: any) => c.category_name));
 
-      // 2. Fetch de marcas (MODIFICADO)
       if (!selectedCategory) {
-        // Si no hay categoría seleccionada, usamos la lista completa garantizada
         setDynamicBrands(ALL_CATALOG_BRANDS);
       } else {
-        // Si seleccionó una categoría, buscamos en DB solo las marcas de esa categoría
         const { data: brandData } = await supabase
           .from("products_unique_styles")
           .select("brand")
           .eq("category", selectedCategory)
           .not("brand", "is", null)
           .limit(5000);
-          
-        if (brandData) {
-          setDynamicBrands(Array.from(new Set(brandData.map(b => b.brand))).sort());
-        }
+        if (brandData) setDynamicBrands(Array.from(new Set(brandData.map(b => b.brand))).sort());
       }
 
-      // 3. Fetch de tallas
       const { data: sizesData } = await supabase.rpc('get_dynamic_sizes', {
         p_category: selectedCategory || null,
         p_brand: selectedBrand || null
       });
-      if (sizesData) setDynamicSizes(sizesData);
+      if (sizesData && sizesData.length > 0) {
+        setDynamicSizes(sortSizes(sizesData));
+      } else if (isRootView) {
+        setDynamicSizes(DEFAULT_SIZES.map(s => ({ name: s, count: 0 })));
+      }
 
-      // 4. Fetch de colores
       const { data: colorsData } = await supabase.rpc('get_dynamic_colors', {
         p_category: selectedCategory || null,
         p_brand: selectedBrand || null
       });
-      if (colorsData) setDynamicColors(colorsData);
+      if (colorsData) {
+        setDynamicColors(colorsData);
+      }
     }
     fetchFilters();
-  }, [selectedCategory]); // Solo reacciona a cambios de categoría para las marcas
+  }, [selectedCategory, selectedBrand, isRootView]);
 
+  // 🔥 FETCH 2: FILTRADO PROFUNDO, ID CORRECTO Y FOTO DE COLOR EXACTO
   useEffect(() => {
     async function fetchProducts() {
       setLoading(true);
+      setDbError(null);
+
       try {
         const isDeepFiltering = selectedSizes.length > 0 || selectedColors.length > 0;
-        
         const from = (currentPage - 1) * ITEMS_PER_PAGE;
         const to = from + ITEMS_PER_PAGE - 1;
 
+        let matchingStyles: string[] = [];
+        let styleToImageMap = new Map<string, string>(); // 🌟 Guardará la foto específica de cada variante
+
+        // 🌟 PASO 1: Extraemos SKUs e Imagen Exacta desde la tabla de Variantes (products)
+        if (isDeepFiltering) {
+          let exactColorMatches: string[] = [];
+          
+          if (selectedColors.length > 0) {
+            for (const colorName of selectedColors) {
+              const colorObj = MAIN_COLORS.find(c => c.name === colorName);
+              const baseKeyword = colorObj ? colorObj.base : colorName.toLowerCase();
+              
+              const matched = dynamicColors.filter(c => c.name.toLowerCase().includes(baseKeyword));
+              if (matched.length > 0) {
+                exactColorMatches.push(...matched.map(c => c.name));
+              } else {
+                const { data: dbColors } = await supabase
+                  .from("products")
+                  .select("color_name")
+                  .ilike("color_name", `%${baseKeyword}%`)
+                  .limit(1000); 
+                  
+                if (dbColors && dbColors.length > 0) {
+                  exactColorMatches.push(...Array.from(new Set(dbColors.map(c => c.color_name))));
+                } else {
+                  exactColorMatches.push(
+                    baseKeyword, 
+                    baseKeyword.charAt(0).toUpperCase() + baseKeyword.slice(1),
+                    baseKeyword.toUpperCase()
+                  );
+                }
+              }
+            }
+          }
+
+          // Consultamos solo los Estilos (SKUs) y su imagen
+          let variantQuery = supabase.from("products").select("style, image_url");
+          
+          if (selectedCategory) variantQuery = variantQuery.eq("category", selectedCategory);
+          if (selectedBrand) variantQuery = variantQuery.eq("brand", selectedBrand);
+          if (selectedSizes.length > 0) variantQuery = variantQuery.in("size", selectedSizes);
+          if (selectedColors.length > 0) variantQuery = variantQuery.in("color_name", exactColorMatches);
+          
+          variantQuery = variantQuery.limit(10000);
+          
+          const { data: variantData, error: variantError } = await variantQuery;
+          if (variantError) throw variantError;
+
+          if (!variantData || variantData.length === 0) {
+            setProducts([]);
+            setTotalProducts(0);
+            setLoading(false);
+            return;
+          }
+
+          // 🌟 Guardamos la foto específica del color filtrado
+          for (const v of variantData) {
+            if (v.style && v.image_url && !styleToImageMap.has(v.style)) {
+              styleToImageMap.set(v.style, v.image_url);
+            }
+          }
+
+          matchingStyles = Array.from(new Set(variantData.map(v => v.style).filter(Boolean)));
+          matchingStyles = matchingStyles.slice(0, 800); 
+        }
+
+        // 🌟 PASO 2: Llamamos a la vista principal para obtener el SLUG MAESTRO que necesita la página de detalles
         let query = supabase
-          .from(isDeepFiltering ? "products" : "products_unique_styles")
-          .select("*", { count: "exact" })
-          .range(from, to);
+          .from("products_unique_styles")
+          .select("*", { count: "exact" });
 
         if (selectedCategory) query = query.eq("category", selectedCategory);
         if (selectedBrand) query = query.eq("brand", selectedBrand);
-        
-        if (selectedSizes.length > 0) query = query.in("size", selectedSizes);
-        if (selectedColors.length > 0) query = query.in("color_name", selectedColors);
-        
-        query = query.lte("price", priceRange);
+        if (priceRange < 150) query = query.lte("price", priceRange);
 
+        if (isDeepFiltering) {
+          query = query.in("style", matchingStyles);
+        }
+
+        query = query.range(from, to);
+        
         const { data, count, error } = await query;
         if (error) throw error;
         
         if (count !== null) setTotalProducts(count);
-
-        if (isDeepFiltering && data) {
-          const uniqueStyles = Array.from(new Map(data.map(item => [item.style, item])).values());
-          setProducts(uniqueStyles);
-        } else if (data) {
-          setProducts(data);
+        
+        if (data) {
+          // 🌟 PASO 3: Reemplazamos la foto predeterminada por la del color exacto
+          const customizedData = data.map(item => {
+            if (isDeepFiltering && styleToImageMap.has(item.style)) {
+              return { ...item, image_url: styleToImageMap.get(item.style) };
+            }
+            return item;
+          });
+          setProducts(customizedData);
         }
-      } catch (err) {
+
+      } catch (err: any) {
         console.error("Error cargando productos:", err);
+        setDbError(err.message || JSON.stringify(err));
       } finally {
         setLoading(false);
       }
     }
     fetchProducts();
-  }, [selectedCategory, selectedBrand, selectedSizes, selectedColors, priceRange, currentPage]);
+  }, [selectedCategory, selectedBrand, selectedSizes, selectedColors, priceRange, currentPage, dynamicColors]);
 
   const handleCategoryChange = (cat: string) => { setSelectedCategory(cat); setCurrentPage(1); };
   const handleBrandChange = (brand: string) => { setSelectedBrand(brand); setCurrentPage(1); };
@@ -181,8 +274,8 @@ function ProductsContent() {
     setCurrentPage(1);
   };
 
-  const toggleColor = (color: string) => {
-    setSelectedColors(prev => prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color]);
+  const toggleColor = (colorName: string) => {
+    setSelectedColors(prev => prev.includes(colorName) ? prev.filter(c => c !== colorName) : [...prev, colorName]);
     setCurrentPage(1);
   };
 
@@ -191,14 +284,26 @@ function ProductsContent() {
     setPriceRange(150); setCurrentPage(1);
   };
 
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const getColorGroupCount = (baseColor: string) => {
+    const matched = dynamicColors.filter(c => c.name.toLowerCase().includes(baseColor));
+    return matched.reduce((acc, curr) => acc + curr.count, 0);
   };
 
   const totalPages = Math.ceil(totalProducts / ITEMS_PER_PAGE);
   const showingFrom = totalProducts === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1;
   const showingTo = Math.min(currentPage * ITEMS_PER_PAGE, totalProducts);
+
+  // 🚀 CONSTRUCTOR DE URLS AMIGABLES (USA EL SLUG)
+  const buildProductUrl = (product: any) => {
+    const params = new URLSearchParams();
+    if (selectedColors.length > 0) params.append("color", selectedColors[0]);
+    if (selectedSizes.length > 0) params.append("size", selectedSizes[0]);
+    
+    const queryString = params.toString();
+    const identifier = product.slug || product.id; // Usa el slug generado, respaldado por el id si faltara
+    
+    return `/products/${identifier}${queryString ? `?${queryString}` : ""}`;
+  };
 
   return (
     <main className="bg-white min-h-screen">
@@ -236,7 +341,7 @@ function ProductsContent() {
 
           <div className="mb-10">
             <h3 className="text-2xl font-bold text-black mb-4 tracking-tight">Price</h3>
-            <p className="text-[15px] font-medium text-black mb-4">€13.00 - €{priceRange}.00</p>
+            <p className="text-[15px] font-medium text-black mb-4">$13.00 - ${priceRange}.00</p>
             <div className="relative h-2 bg-gray-200 rounded-full flex items-center mt-6">
               <div className="absolute left-0 -ml-2 w-6 h-6 bg-[#8012d8] rounded-full shadow-md z-10"></div>
               <input 
@@ -259,39 +364,45 @@ function ProductsContent() {
                       </div>
                       <span className="text-[17px] font-medium text-black">{s.name}</span>
                     </div>
-                    <span className="text-[15px] text-gray-500">({s.count})</span>
+                    <span className="text-[15px] text-gray-500">{s.count > 0 ? `(${s.count})` : ""}</span>
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {dynamicColors.length > 0 && (
-            <div className="mb-10">
-              <h3 className="text-2xl font-bold text-black mb-6 tracking-tight">Color</h3>
-              <ul className="space-y-4">
-                {dynamicColors.map(c => (
+          {/* LISTA AGRUPADA DE COLORES PRINCIPALES */}
+          <div className="mb-10">
+            <h3 className="text-2xl font-bold text-black mb-6 tracking-tight">Color</h3>
+            <ul className="space-y-4">
+              {MAIN_COLORS.map(c => {
+                const count = getColorGroupCount(c.base);
+                
+                if (count === 0 && !isRootView) return null; 
+                
+                const isSelected = selectedColors.includes(c.name);
+                return (
                   <li key={c.name} className="flex items-center justify-between group cursor-pointer" onClick={() => toggleColor(c.name)}>
                     <div className="flex items-center gap-4">
                       <div 
-                        className={`w-6 h-6 rounded-full shadow-sm border ${selectedColors.includes(c.name) ? 'ring-2 ring-offset-2 ring-black' : 'border-gray-200'}`}
-                        style={{ backgroundColor: getHexForColor(c.name) }}
+                        className={`w-6 h-6 rounded-full shadow-sm border ${isSelected ? 'ring-2 ring-offset-2 ring-black' : 'border-gray-300 group-hover:border-black'}`}
+                        style={{ backgroundColor: c.hex }}
                       />
-                      <span className="text-[17px] font-medium text-black capitalize">{c.name.toLowerCase()}</span>
+                      <span className={`text-[17px] font-medium transition-colors ${isSelected ? 'text-black font-bold' : 'text-gray-700'}`}>{c.name}</span>
                     </div>
-                    <span className="text-[15px] text-gray-500">({c.count})</span>
+                    <span className="text-[15px] text-gray-500">{count > 0 ? `(${count})` : ""}</span>
                   </li>
-                ))}
-              </ul>
-            </div>
-          )}
+                );
+              })}
+            </ul>
+          </div>
 
           <div className="mb-10">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 border-b pb-2">Category</h3>
             <ul className="space-y-2">
-              <li onClick={() => handleCategoryChange("")} className={`text-xs font-bold uppercase cursor-pointer ${!selectedCategory ? 'color-primary' : 'text-gray-500 hover:text-black'}`}>All Categories</li>
+              <li onClick={() => handleCategoryChange("")} className={`text-xs font-bold uppercase cursor-pointer ${!selectedCategory ? 'text-[#8012d8]' : 'text-gray-500 hover:text-black'}`}>All Categories</li>
               {dynamicCategories.slice(0, 10).map(cat => (
-                <li key={cat} onClick={() => handleCategoryChange(cat)} className={`text-xs font-bold uppercase cursor-pointer ${selectedCategory === cat ? 'color-primary' : 'text-gray-500 hover:text-[#8012d8]'}`}>
+                <li key={cat} onClick={() => handleCategoryChange(cat)} className={`text-xs font-bold uppercase cursor-pointer ${selectedCategory === cat ? 'text-[#8012d8]' : 'text-gray-500 hover:text-[#8012d8]'}`}>
                   {cat}
                 </li>
               ))}
@@ -301,9 +412,9 @@ function ProductsContent() {
           <div className="mb-10">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 border-b pb-2">Brands</h3>
             <ul className="space-y-2">
-              <li onClick={() => handleBrandChange("")} className={`text-xs font-bold uppercase cursor-pointer ${!selectedBrand ? 'color-primary' : 'text-gray-500 hover:text-[#8012d8]'}`}>All Brands</li>
+              <li onClick={() => handleBrandChange("")} className={`text-xs font-bold uppercase cursor-pointer ${!selectedBrand ? 'text-[#8012d8]' : 'text-gray-500 hover:text-[#8012d8]'}`}>All Brands</li>
               {dynamicBrands.map(brand => (
-                <li key={brand} onClick={() => handleBrandChange(brand)} className={`text-xs font-bold uppercase cursor-pointer ${selectedBrand === brand ? 'color-primary' : 'text-gray-500 hover:text-[#8012d8]'}`}>
+                <li key={brand} onClick={() => handleBrandChange(brand)} className={`text-xs font-bold uppercase cursor-pointer ${selectedBrand === brand ? 'text-[#8012d8]' : 'text-gray-500 hover:text-[#8012d8]'}`}>
                   {brand}
                 </li>
               ))}
@@ -330,15 +441,24 @@ function ProductsContent() {
             <div className="py-40 flex justify-center">
               <div className="w-10 h-10 border-4 border-gray-200 border-t-[#8012d8] rounded-full animate-spin" />
             </div>
+          ) : dbError ? (
+            <div className="py-20 text-center bg-red-50 rounded-3xl border border-dashed border-red-300">
+              <h3 className="text-2xl font-black uppercase tracking-tighter text-red-600 mb-2">Database Error</h3>
+              <p className="text-sm font-medium text-red-500 mb-6 max-w-lg mx-auto">{dbError}</p>
+              <button 
+                onClick={clearAllFilters}
+                className="px-8 py-3 bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-black transition-colors rounded-sm"
+              >
+                Clear Filters & Reset
+              </button>
+            </div>
           ) : products.length > 0 ? (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8">
                 {products.map((product) => (
-                  <Link key={product.id} href={`/products/${product.id}`} className="group block">
-                    
+                  <Link key={product.id} href={buildProductUrl(product)} className="group block">
                     <div className="relative aspect-[3/4] bg-[#F3F3F3] rounded-2xl overflow-hidden mb-4 group-hover:shadow-md transition-all duration-500 flex items-center justify-center">
                       <CatalogImage imageUrl={product.image_url} title={product.title} />
-                      {/* BOTÓN ELIMINADO */}
                     </div>
 
                     <div className="px-1">
@@ -348,9 +468,6 @@ function ProductsContent() {
                       <h3 className="text-[12px] font-bold text-gray-900 leading-tight group-hover:text-[#8012d8] transition-colors uppercase tracking-tight line-clamp-2">
                         {product.title || product.product_name}
                       </h3>
-                      {/* <p className="text-[12px] font-black text-black mt-2 tracking-tighter">
-                        ${product.price}
-                      </p> */}
                     </div>
                   </Link>
                 ))}
@@ -360,7 +477,7 @@ function ProductsContent() {
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-4 mt-20 pt-10 border-t border-gray-100">
                   <button
-                    onClick={() => handlePageChange(Math.max(currentPage - 1, 1))}
+                    onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
                     disabled={currentPage === 1}
                     className="px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] border border-gray-200 rounded-sm disabled:opacity-30 hover:border-black hover:bg-black hover:text-white transition-all"
                   >
@@ -370,7 +487,7 @@ function ProductsContent() {
                     <span className="text-black">{currentPage}</span> / <span>{totalPages}</span>
                   </div>
                   <button
-                    onClick={() => handlePageChange(Math.min(currentPage + 1, totalPages))}
+                    onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     className="px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] border border-gray-200 rounded-sm disabled:opacity-30 hover:border-black hover:bg-black hover:text-white transition-all"
                   >
@@ -399,7 +516,6 @@ function ProductsContent() {
   );
 }
 
-// ✅ 3. Creamos el nuevo componente principal que envuelve a ProductsContent en Suspense
 export default function ProductsPage() {
   return (
     <Suspense 

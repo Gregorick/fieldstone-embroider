@@ -11,7 +11,7 @@ import "swiper/css/effect-fade";
 
 // ✅ 1. IMPORTAMOS LAS IMÁGENES DIRECTAMENTE (Esto evita rutas rotas)
 import imgSlide1 from "@/public/emb/product-photo-(10).png";
-import imgSlide2 from "@/public/emb/product-photo-(9).png";
+import imgSlide2 from "@/public/emb/product-photo-(7).png";
 import imgSlide3 from "@/public/emb/product-photo-(12).png";
 
 // Definimos los 3 slides enfocados en el servicio de bordado/personalización

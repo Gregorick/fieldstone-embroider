@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import logoImg from '@/public/logo.png';
 import Link from "next/link";
-import { Search, ShoppingBag, User, ChevronRight, X, ArrowRight, Upload } from "lucide-react";
+import { Search, ShoppingBag, User, ChevronRight, X, ArrowRight, Upload, Grip } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "../context/CartContext";
 
@@ -57,39 +57,22 @@ const brandImagesMap: Record<string, any> = {
   "Tommy Bahama": logoTommyBahama, "TravisMathew": logoTravisMathew, "Volunteer Knitwear": logoVolunteerKnitwear, "Wink": logoWink
 };
 
-// --- COMPONENTE DE IMAGEN DEL MEGA MENU ---
-function MegaMenuImage({ imageUrl, category }: { imageUrl: string; category: string }) {
-  if (!imageUrl)
-    return (
-      <div className="w-full h-full bg-gray-50 flex items-center justify-center rounded-[2rem]">
-        <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest italic">No Image</span>
-      </div>
-    );
-
-  return (
-    <div className="relative w-full h-full animate-in fade-in duration-500">
-      <img
-        src={imageUrl}
-        alt={category}
-        className="w-full h-full object-contain mix-blend-multiply p-4"
-        onError={(e) => { e.currentTarget.src = "https://via.placeholder.com/400x500?text=Product"; }}
-      />
-      <div className="absolute bottom-6 left-6 right-6 bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white shadow-sm">
-        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#8012d8] mb-1">Featured Item</p>
-        <p className="text-xs font-bold text-black truncate uppercase tracking-tighter">{category}</p>
-      </div>
-    </div>
-  );
-}
-
 export default function Header() {
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isBrandMenuOpen, setIsBrandMenuOpen] = useState(false);
+  
   const [allBrands, setAllBrands] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  
+  const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
+  
+  const [viewState, setViewState] = useState<"grid" | "category">("grid");
+  
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [subCategories, setSubCategories] = useState<string[]>([]);
-  const [activeImage, setActiveImage] = useState<string>("");
+  
+  const [categoryFeatured, setCategoryFeatured] = useState<any[]>([]);
+  
   const { cartCount, setIsCartOpen } = useCart();
   
   const [user, setUser] = useState<any>(null);
@@ -103,14 +86,21 @@ export default function Header() {
   const [uploadedLogo, setUploadedLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ✅ NUEVO: Guardamos los settings del Admin para aplicar filtros
   const [allowedCategories, setAllowedCategories] = useState<string[]>([]);
   const [allowedBrands, setAllowedBrands] = useState<string[]>([]);
 
-  // ✅ ACTUALIZADO: Obtenemos los Settings, Marcas y Categorías sincronizados
+  // ORDEN PRIORITARIO SOLICITADO
+  const priorityCategories = [
+    "Caps", 
+    "T-Shirts", 
+    "Polo/Knits", 
+    "Bags", 
+    "Sweatshirts/Fleece", 
+    "Womens"
+  ];
+
   useEffect(() => {
     async function loadHeaderData() {
-      // 1. Obtener configuraciones del admin
       let localAllowedCats: string[] = [];
       let localAllowedBrands: string[] = [];
       const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
@@ -122,31 +112,56 @@ export default function Header() {
         setAllowedBrands(localAllowedBrands);
       }
 
-      // 2. Cargar y filtrar Categorías
       const { data: catData } = await supabase.rpc("get_unique_categories");
       if (catData) {
         let uniqueCats = catData.map((item: any) => item.category_name);
         if (localAllowedCats.length > 0) {
           uniqueCats = uniqueCats.filter((c: string) => localAllowedCats.includes(c));
         }
+
+        uniqueCats.sort((a: string, b: string) => {
+          const indexA = priorityCategories.findIndex(p => p.toLowerCase() === a.toLowerCase());
+          const indexB = priorityCategories.findIndex(p => p.toLowerCase() === b.toLowerCase());
+          
+          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+          if (indexA !== -1) return -1;
+          if (indexB !== -1) return 1;
+          return a.localeCompare(b);
+        });
+
         setCategories(uniqueCats);
-        if (uniqueCats.length > 0) setActiveCategory(uniqueCats[0]);
+
+        const imgMap: Record<string, string> = {};
+        const imagePromises = uniqueCats.map(async (cat) => {
+          const { data } = await supabase
+            .from("products_unique_styles")
+            .select("image_url")
+            .eq("category", cat)
+            .not("image_url", "is", null)
+            .limit(1)
+            .maybeSingle();
+          if (data?.image_url) {
+            imgMap[cat] = data.image_url;
+          }
+        });
+        await Promise.all(imagePromises);
+        setCategoryImages(imgMap);
       }
 
-      // 3. Cargar y filtrar Marcas (Solo las que tienen imagen configurada y el Admin permite)
-      const { data: brandData } = await supabase.from("products_unique_styles").select("brand").not("brand", "is", null);
-      if (brandData) {
-        let uniqueBrands = Array.from(new Set(brandData.map((p) => p.brand))).filter(b => brandImagesMap[b as string]) as string[];
-        if (localAllowedBrands.length > 0) {
-          uniqueBrands = uniqueBrands.filter(b => localAllowedBrands.includes(b));
-        }
-        setAllBrands(uniqueBrands.sort());
+      // 🔥 LA SOLUCIÓN: Usamos directamente las llaves de los logos que sí existen en lugar 
+      // de buscar en los miles de productos (que se limitaban a 1000). 
+      // Esto hace que se muestren las 35 marcas inmediatamente.
+      let uniqueBrands = Object.keys(brandImagesMap);
+      
+      if (localAllowedBrands.length > 0) {
+        uniqueBrands = uniqueBrands.filter(b => localAllowedBrands.includes(b));
       }
+      
+      setAllBrands(uniqueBrands.sort());
     }
 
     loadHeaderData();
 
-    // Lógica para cargar el logo del usuario en local
     const savedLogo = localStorage.getItem("user_custom_logo");
     if (savedLogo) setUploadedLogo(savedLogo);
 
@@ -155,7 +170,6 @@ export default function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Consultar perfil del usuario
   useEffect(() => {
     async function loadUser() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -168,7 +182,6 @@ export default function Header() {
         setAvatarUrl(null);
       }
     }
-
     loadUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => { 
@@ -181,27 +194,36 @@ export default function Header() {
         setAvatarUrl(null);
       }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // ✅ ACTUALIZADO: Cargar "Top Brands" de la categoría activa aplicando filtro del admin
   useEffect(() => {
-    if (!activeCategory) return;
+    if (!activeCategory || viewState === "grid") return;
     async function fetchCategoryData() {
-      const { data } = await supabase.from("products_unique_styles").select("brand, image_url").eq("category", activeCategory).limit(100);
+      // ✅ AÑADIDO: Incluimos 'slug' en el .select() para las urls amigables
+      const { data } = await supabase.from("products_unique_styles").select("id, slug, brand, image_url, title").eq("category", activeCategory).limit(100);
+      
       if (data) {
         let uniqueBrands = Array.from(new Set(data.map((item) => item.brand))) as string[];
-        // Filtramos por las marcas permitidas por el Admin
         if (allowedBrands.length > 0) {
           uniqueBrands = uniqueBrands.filter(b => allowedBrands.includes(b));
         }
-        setSubCategories(uniqueBrands.slice(0, 8)); // Top 8 permitidas
-        if (data.length > 0) setActiveImage(data[0].image_url);
+        setSubCategories(uniqueBrands.slice(0, 8)); 
+        
+        const uniqueImageProducts = [];
+        const seenImages = new Set();
+        for (const item of data) {
+          if (item.image_url && !seenImages.has(item.image_url)) {
+            seenImages.add(item.image_url);
+            uniqueImageProducts.push(item);
+          }
+          if (uniqueImageProducts.length >= 6) break; 
+        }
+        setCategoryFeatured(uniqueImageProducts);
       }
     }
     fetchCategoryData();
-  }, [activeCategory, allowedBrands]); // Depende también de allowedBrands
+  }, [activeCategory, viewState, allowedBrands]); 
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -213,9 +235,10 @@ export default function Header() {
       setIsSearching(true);
       const safeQuery = searchQuery.replace(/,/g, '');
       try {
+        // ✅ AÑADIDO: Incluimos 'slug' en el .select() del buscador
         const { data, error } = await supabase
           .from("products_unique_styles")
-          .select("id, title, style, image_url, brand, category")
+          .select("id, slug, title, style, image_url, brand, category")
           .or(`title.ilike.%${safeQuery}%,style.ilike.%${safeQuery}%,brand.ilike.%${safeQuery}%,category.ilike.%${safeQuery}%`)
           .limit(10);
         if (error) throw error;
@@ -247,6 +270,12 @@ export default function Header() {
     }
   };
 
+  const handleOpenProductsMenu = () => {
+    setViewState("grid");
+    setIsMegaMenuOpen(true);
+    setIsBrandMenuOpen(false);
+  };
+
   return (
     <>
       <style jsx global>{`
@@ -275,8 +304,8 @@ export default function Header() {
           </div>
 
           <nav className="hidden md:flex items-center gap-8 mx-auto h-full z-10">
-            {/* SHOP */}
-            <div onMouseEnter={() => { setIsMegaMenuOpen(true); setIsBrandMenuOpen(false); }} className="h-full cursor-pointer flex items-center">
+            {/* SHOP / PRODUCTS */}
+            <div onMouseEnter={handleOpenProductsMenu} className="h-full cursor-pointer flex items-center">
               <Link href="/products" onClick={() => setIsMegaMenuOpen(false)} className="text-[12px] tracking-widest font-bold text-black hover:text-[#8012d8] py-5 block h-full flex items-center uppercase">
                 Products
               </Link>
@@ -288,7 +317,7 @@ export default function Header() {
             </div>
 
             <Link href="/about" onMouseEnter={() => { setIsMegaMenuOpen(false); setIsBrandMenuOpen(false); }} className="text-[12px] tracking-widest font-bold text-black hover:text-[#8012d8] transition-colors">ABOUT</Link>
-            <Link href="/contact" onMouseEnter={() => { setIsMegaMenuOpen(false); setIsBrandMenuOpen(false); }} className="text-[12px] tracking-widest font-bold text-black hover:text-[#8012d8] transition-colors">CONTACT US</Link>
+            <Link href="/#contactus" onMouseEnter={() => { setIsMegaMenuOpen(false); setIsBrandMenuOpen(false); }} className="text-[12px] tracking-widest font-bold text-black hover:text-[#8012d8] transition-colors">CONTACT US</Link>
           </nav>
 
           <div className="flex items-center gap-4 z-50" onMouseEnter={() => { setIsMegaMenuOpen(false); setIsBrandMenuOpen(false); }}>
@@ -342,7 +371,7 @@ export default function Header() {
 
         {/* --- MEGA MENU BRANDS --- */}
         {isBrandMenuOpen && !isSearchOpen && (
-          <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200 p-8 z-[90] max-h-[600px] overflow-y-auto">
+          <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200 p-8 z-[90] max-h-[600px] overflow-y-auto custom-scrollbar">
              <div className="container mx-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-black uppercase tracking-widest text-black italic">Featured Brands</h3>
@@ -350,7 +379,7 @@ export default function Header() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
                     {allBrands.map((brand) => (
-                        <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} onClick={() => setIsBrandMenuOpen(false)} className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors border border-gray-100">
+                        <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} onClick={() => setIsBrandMenuOpen(false)} className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors border border-gray-100 hover:border-gray-300">
                            <img src={brandImagesMap[brand].src} alt={brand} className="h-12 w-full object-contain mix-blend-multiply opacity-70 hover:opacity-100 transition-opacity" />
                         </Link>
                     ))}
@@ -367,56 +396,134 @@ export default function Header() {
                 <X size={24} strokeWidth={1.5} />
               </button>
               
-              <div className="w-[300px] bg-gray-50 p-8 overflow-y-auto custom-scrollbar h-full">
-                <ul className="space-y-1 py-12">
+              {/* SIDEBAR IZQUIERDO */}
+              <div className="w-[300px] bg-gray-50 p-8 overflow-y-auto custom-scrollbar h-full flex flex-col">
+                <button 
+                  onMouseEnter={() => setViewState("grid")}
+                  className={`w-full text-left text-[13px] font-black uppercase tracking-widest p-4 rounded-xl transition-all flex items-center gap-3 mb-6 ${viewState === "grid" ? "bg-black text-white shadow-lg" : "text-black border border-gray-200 hover:border-black bg-white"}`}
+                >
+                  <Grip size={16} className={viewState === "grid" ? "text-white" : "text-black"} />
+                  View All Categories
+                </button>
+
+                <ul className="space-y-1">
                   {categories.map((cat) => (
                     <li key={cat}>
-                      <button onMouseEnter={() => setActiveCategory(cat)} className={`w-full text-left text-[13px] font-bold p-3 rounded transition-all flex items-center justify-between ${activeCategory === cat ? "bg-white text-[#8012d8] shadow-md translate-x-1" : "text-gray-700 hover:bg-white"}`}>
-                        {cat} <ChevronRight size={14} className={activeCategory === cat ? "opacity-100" : "opacity-0"} />
+                      <button 
+                        onMouseEnter={() => { setActiveCategory(cat); setViewState("category"); }} 
+                        className={`w-full text-left text-[13px] font-bold p-3 rounded transition-all flex items-center justify-between ${viewState === "category" && activeCategory === cat ? "bg-white text-[#8012d8] shadow-md translate-x-1" : "text-gray-700 hover:bg-white"}`}
+                      >
+                        {cat} <ChevronRight size={14} className={viewState === "category" && activeCategory === cat ? "opacity-100" : "opacity-0"} />
                       </button>
                     </li>
                   ))}
                 </ul>
               </div>
 
-              <div className="flex-1 flex h-full overflow-y-auto custom-scrollbar">
-                <div className="flex-1 p-12">
-                  <h2 className="text-5xl font-black uppercase tracking-tighter text-black mb-10 italic">{activeCategory}</h2>
-                  <div className="grid grid-cols-2 gap-12">
-                    <div>
-                      <h3 className="text-[11px] font-black tracking-widest text-gray-400 mb-6 uppercase">Top Brands</h3>
-                      <ul className="space-y-4">
-                        {subCategories.map((sub) => (
-                          <li key={sub} className="text-xs font-bold text-gray-800 hover:text-[#8012d8] cursor-pointer uppercase">
-                            <Link href={`/products?category=${encodeURIComponent(activeCategory)}&brand=${encodeURIComponent(sub)}`} onClick={() => setIsMegaMenuOpen(false)}>{sub}</Link>
-                          </li>
-                        ))}
+              {/* PANEL DERECHO DINÁMICO */}
+              <div className="flex-1 flex h-full overflow-y-auto custom-scrollbar relative">
+                
+                {/* ✅ VISTA 1: CUADRÍCULA GENERAL */}
+                {viewState === "grid" && (
+                  <div className="flex-1 p-12">
+                    <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-black italic mb-10">Explore Our Shop</h2>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 pb-20">
+                      {categories.map((cat) => (
+                        <Link 
+                          key={cat} 
+                          href={`/products?category=${encodeURIComponent(cat)}`}
+                          onClick={() => setIsMegaMenuOpen(false)}
+                          className="p-4 bg-white border border-gray-100 hover:border-black rounded-3xl transition-all hover:shadow-xl flex flex-col items-center text-center group"
+                        >
+                          {/* Contenedor de la Imagen */}
+                          <div className="w-full aspect-square bg-[#f8fafc] rounded-2xl overflow-hidden mb-4 p-5 flex items-center justify-center border border-transparent group-hover:border-gray-200 transition-colors relative">
+                            {categoryImages[cat] ? (
+                              <img 
+                                src={categoryImages[cat]} 
+                                alt={cat} 
+                                className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-500" 
+                                onError={(e) => { e.currentTarget.src = "https://via.placeholder.com/150?text=No+Image"; }}
+                              />
+                            ) : (
+                              <ShoppingBag className="text-gray-300" size={32} />
+                            )}
+                          </div>
+                          
+                          {/* Título pequeño, centrado y SIN TRUNCAR */}
+                          <span className="text-[10px] font-black uppercase tracking-widest text-black group-hover:text-[#8012d8] transition-colors leading-relaxed px-2 break-words">
+                            {cat}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* VISTA 2: DETALLE DE CATEGORÍA CON MINIATURAS */}
+                {viewState === "category" && (
+                  <div className="flex-1 p-12 flex flex-col h-full animate-in fade-in duration-300">
+                    <h2 className="text-5xl font-black uppercase tracking-tighter text-black mb-10 italic">{activeCategory}</h2>
+                    
+                    <div className="grid grid-cols-2 gap-12 mb-10 shrink-0">
+                      <div>
+                        <h3 className="text-[11px] font-black tracking-widest text-gray-400 mb-6 uppercase">Top Brands</h3>
+                        <ul className="grid grid-cols-2 gap-y-4 gap-x-6">
+                          {subCategories.map((sub) => (
+                            <li key={sub} className="text-xs font-bold text-gray-800 hover:text-[#8012d8] cursor-pointer uppercase truncate">
+                              <Link href={`/products?category=${encodeURIComponent(activeCategory)}&brand=${encodeURIComponent(sub)}`} onClick={() => setIsMegaMenuOpen(false)}>{sub}</Link>
+                            </li>
+                          ))}
+                        </ul>
                         {subCategories.length > 0 && (
-                          <li className="pt-2">
-                             <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} onClick={() => setIsMegaMenuOpen(false)} className="text-[10px] font-black text-[#8012d8] hover:text-black uppercase tracking-widest transition-colors flex items-center gap-1">
-                                See All Brands <ChevronRight size={12} />
-                             </Link>
-                          </li>
+                          <div className="mt-6">
+                            <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} onClick={() => setIsMegaMenuOpen(false)} className="text-[10px] font-black text-[#8012d8] hover:text-black uppercase tracking-widest transition-colors flex items-center gap-1">
+                              See All Brands <ChevronRight size={12} />
+                            </Link>
+                          </div>
                         )}
-                      </ul>
+                      </div>
+                      <div>
+                        <h3 className="text-[11px] font-black tracking-widest text-gray-400 mb-6 uppercase">Shortcuts</h3>
+                        <ul className="space-y-4">
+                          <li className="text-xs font-bold text-black border-b-2 border-black inline-block cursor-pointer hover:text-[#8012d8] hover:border-[#8012d8] transition-colors">
+                            <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} onClick={() => setIsMegaMenuOpen(false)}>
+                              VIEW ALL {activeCategory}
+                            </Link>
+                          </li>
+                        </ul>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-[11px] font-black tracking-widest text-gray-400 mb-6 uppercase">Shortcuts</h3>
-                      <ul className="space-y-4">
-                        <li className="text-xs font-bold text-black border-b-2 border-black inline-block cursor-pointer hover:text-[#8012d8] hover:border-[#8012d8] transition-colors">
-                          <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} onClick={() => setIsMegaMenuOpen(false)}>
-                            VIEW ALL {activeCategory}
-                          </Link>
-                        </li>
-                      </ul>
+
+                    {/* CUADRÍCULA DE FOTOS EN MINIATURA (3 Columnas) */}
+                    <div className="mt-auto border-t border-gray-100 pt-8 pb-12">
+                      <h3 className="text-[11px] font-black tracking-widest text-gray-400 mb-6 uppercase">Featured in {activeCategory}</h3>
+                      {categoryFeatured.length > 0 ? (
+                        <div className="grid grid-cols-3 gap-4">
+                          {categoryFeatured.map((prod, idx) => (
+                            <Link 
+                              key={idx} 
+                              href={`/products/${prod.slug || prod.id}`} // ✅ AÑADIDO: Uso de slug en el Mega Menú
+                              onClick={() => setIsMegaMenuOpen(false)}
+                              className="group relative aspect-square bg-[#F3F3F3] rounded-2xl overflow-hidden border border-gray-100 hover:border-black hover:shadow-lg transition-all flex items-center justify-center p-4"
+                            >
+                              <img 
+                                src={prod.image_url} 
+                                alt={prod.title || activeCategory} 
+                                className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-500"
+                                onError={(e) => { e.currentTarget.src = "https://via.placeholder.com/150?text=No+Image"; }}
+                              />
+                            </Link>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="w-full h-32 bg-gray-50 flex items-center justify-center rounded-2xl">
+                          <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest italic">No Images Available</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-                <div className="w-[450px] p-10 h-full flex items-center">
-                  <div className="w-full aspect-[3/4] bg-[#F3F3F3] rounded-[2.5rem] overflow-hidden border border-gray-100 shadow-inner flex items-center justify-center relative">
-                    <MegaMenuImage imageUrl={activeImage} category={activeCategory} />
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -435,9 +542,7 @@ export default function Header() {
               {isSearching && <div className="absolute right-4 top-1/2 -translate-y-1/2"><div className="w-8 h-8 border-4 border-gray-200 border-t-black rounded-full animate-spin" /></div>}
             </div>
             
-            {/* --- LÓGICA VISUAL DE RESULTADOS DE BÚSQUEDA --- */}
             <div className="flex-1 overflow-y-auto custom-scrollbar pb-20 pr-4">
-              
               {searchQuery.length > 0 && searchQuery.length < 2 && (
                 <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest text-center mt-10">Keep typing to search...</p>
               )}
@@ -480,7 +585,7 @@ export default function Header() {
                       </div>
 
                       <Link 
-                        href={`/products/${product.id}`}
+                        href={`/products/${product.slug || product.id}`} // ✅ AÑADIDO: Uso de slug en el Buscador
                         onClick={() => setIsSearchOpen(false)} 
                         className="px-6 py-4 bg-white border-2 border-gray-100 rounded-xl text-[10px] font-black uppercase tracking-widest text-black group-hover:bg-black group-hover:border-black group-hover:text-white transition-all flex items-center gap-2 flex-shrink-0 shadow-sm"
                       >
@@ -492,7 +597,6 @@ export default function Header() {
                 </div>
               )}
             </div>
-
           </div>
         </div>
       )}

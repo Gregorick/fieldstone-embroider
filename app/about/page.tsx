@@ -3,14 +3,14 @@
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import Image from "next/image";
+import Link from "next/link"; // ✅ Agregamos la importación de Link
 
 // Importaciones de imágenes
-import imgAbout from "@/public/emb/product-photo-(9).png";
+import imgAbout from "@/public/emb/product-photo-(7).png";
 import imgTshirts from "@/public/emb/product-photo-(4).png";
 import imgHoodies from "@/public/emb/product-photo-(12).png";
 import imgHats from "@/public/emb/fondo-1.png";
-// Usamos require para imágenes con espacios/caracteres especiales en el nombre
-import imgPromo from "@/public/emb/productphotodetamañomediano.jpeg";
+import imgPromo from "@/public/emb/productphotodetamanomediano.jpeg";
 
 export default function AboutUsPage() {
   return (
@@ -57,27 +57,45 @@ export default function AboutUsPage() {
           </p>
         </section>
 
-        {/* SECCIÓN 3: 4 COLUMNAS */}
+        {/* SECCIÓN 3: 4 COLUMNAS CON ENLACES A CATEGORÍAS */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {[
-            { title: "T-Shirts and Polos", img: imgTshirts },
-            { title: "Hoodies and Sweaters", img: imgHoodies },
-            { title: "Hats and Beanies", img: imgHats },
-            { title: "Promotional Items", img: imgPromo },
+            { 
+              title: "T-Shirts and Polos", 
+              img: imgTshirts,
+              link: `/products?category=${encodeURIComponent("Polo/Knits")}` 
+            },
+            { 
+              title: "Hoodies and Sweaters", 
+              img: imgHoodies,
+              link: `/products?category=${encodeURIComponent("Sweatshirts/Fleece")}` 
+            },
+            { 
+              title: "Hats and Beanies", 
+              img: imgHats,
+              link: `/products?category=${encodeURIComponent("Caps")}` 
+            },
+            { 
+              title: "Promotional Items", 
+              img: imgPromo,
+              link: `/products?category=${encodeURIComponent("Accessories")}` 
+            },
           ].map((item, index) => (
-            <div key={index} className="group cursor-pointer">
-              <div className="aspect-[2/3] relative rounded-2xl overflow-hidden mb-4">
+            <Link key={index} href={item.link} className="group block cursor-pointer">
+              {/* ✅ Contenedor ajustado para verse idéntico a tu captura (más ancho, menos alto) */}
+              <div className="aspect-[4/3] relative rounded-2xl overflow-hidden mb-6 flex items-center justify-center p-4">
                 <Image 
                   src={item.img} 
                   alt={item.title} 
                   fill 
-                  className="object-contain transition-transform duration-500 group-hover:scale-105" 
+                  className="object-contain transition-transform duration-500 group-hover:scale-110 mix-blend-multiply" 
                 />
               </div>
-              <h3 className="text-lg font-bold text-black uppercase tracking-tight group-hover:text-[#8012d8] transition-colors">
+              {/* ✅ Título centrado y sin cortarse */}
+              <h3 className="text-[14px] md:text-[15px] font-black text-black uppercase text-center tracking-wide group-hover:text-[#8012d8] transition-colors">
                 {item.title}
               </h3>
-            </div>
+            </Link>
           ))}
         </section>
 

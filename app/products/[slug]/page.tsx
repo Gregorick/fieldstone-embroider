@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, Suspense, useRef } from "react";
+import { useParams, useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Header from "../../components/Header";
@@ -15,10 +15,21 @@ import sizeChartImg from "@/public/Size_chart.webp";
 // IMPORTACIONES DE LAS GUÍAS DE COLOCACIÓN
 import placement1 from "@/public/PLACEMENT-GUIDE_Pagina_1.jpg";
 import placement2 from "@/public/PLACEMENT-GUIDE_Pagina_2.jpg";
-import placement3 from "@/public/PLACEMENT-GUIDE_Pagina_3.jpg"; // ✅ NUEVA IMAGEN IMPORTADA
+import placement3 from "@/public/PLACEMENT-GUIDE_Pagina_3.jpg";
+
+// ✅ LISTA PARA MAPEAR GRUPOS DE COLORES A NOMBRES REALES DE LA BD
+const MAIN_COLORS = [
+  { name: "Blacks", base: "black" }, { name: "Whites", base: "white" },
+  { name: "Grays", base: "gray" }, { name: "Blues", base: "blue" },
+  { name: "Reds", base: "red" }, { name: "Greens", base: "green" },
+  { name: "Oranges", base: "orange" }, { name: "Browns", base: "brown" },
+  { name: "Pinks", base: "pink" }, { name: "Purples", base: "purple" },
+  { name: "Yellows", base: "yellow" }, { name: "Navies", base: "navy" },
+  { name: "Charcoals", base: "charcoal" }, { name: "Beiges", base: "beige" }
+];
 
 // Orden lógico para las tallas
-const SIZE_ORDER: Record<string, number> = { "XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5, "2XL": 6, "3XL": 7, "4XL": 8, "5XL": 9, "6XL": 10 };
+const SIZE_ORDER: Record<string, number> = { "XXS": 0, "XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5, "2XL": 6, "3XL": 7, "4XL": 8, "5XL": 9, "6XL": 10 };
 
 // Tiers por defecto (Fallback si la DB falla)
 const DEFAULT_DECORATION_TIERS = [
@@ -30,26 +41,30 @@ const DEFAULT_DECORATION_TIERS = [
   { min: 288, max: 499, emb: 6.00, sp: 3.00, dtf: 5.45 },
 ];
 
-export default function ProductPage() {
-  const { id } = useParams();
+function ProductPageContent() {
+  const { slug } = useParams(); // 🚀 Ahora leemos el slug de la URL
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  
   const { addToCart, setIsCartOpen } = useCart();
   
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [uploadedLogo, setUploadedLogo] = useState<string | null>(null);
 
+  // Referencia y estado para el modal de advertencia legal
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLegalWarningOpen, setIsLegalWarningOpen] = useState(false);
+
   // Estados de Selección
   const [quantity, setQuantity] = useState<number>(1);
   const [decorationMethod, setDecorationMethod] = useState<"emb" | "sp" | "">("");
   
-  // Estados para las locaciones y los comentarios extras
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [extraComments, setExtraComments] = useState<string>("");
-
-  // Estado para el Popup de validación
   const [validationError, setValidationError] = useState<string | null>(null);
   
-  // Estados Dinámicos de Variaciones y Precios
   const [variants, setVariants] = useState<any[]>([]);
   const [availableColorObjects, setAvailableColorObjects] = useState<{name: string, image: string}[]>([]);
   const [availableSizes, setAvailableSizes] = useState<string[]>([]);
@@ -57,21 +72,17 @@ export default function ProductPage() {
   const [selectedSize, setSelectedSize] = useState("");
   const [basePrice, setBasePrice] = useState<number>(0);
   
-  // Estados dinámicos traídos desde el Administrador
   const [decorationTiers, setDecorationTiers] = useState<any[]>(DEFAULT_DECORATION_TIERS);
   const [feeThreshold, setFeeThreshold] = useState<number>(300);
   const [feeAmount, setFeeAmount] = useState<number>(65);
 
-  // Estados de la Galería
   const [mainImage, setMainImage] = useState<string>("");
   const [gallery, setGallery] = useState<string[]>([]);
   const [openAccordion, setOpenAccordion] = useState<string | null>(null);
 
-  // Estados de Modales
   const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
   const [isPlacementGuideOpen, setIsPlacementGuideOpen] = useState(false);
 
-  // Mover DISCLOSURES dentro para usar las variables dinámicas
   const DISCLOSURES = [
     { id: "preview", icon: <Info size={16}/>, title: "What Your Logo Might Look Like", content: "Preview will not represent exact size or location. A proof will be provided before production begins. Logos placed in standard location unless otherwise requested." },
     { id: "one-logo", icon: <Check size={16}/>, title: "One Logo Per Order", content: "Logo goes on all products in the order. No need to upload logo on every item. Location changes should be noted at checkout. Color changes by item should be noted at checkout." },
@@ -80,13 +91,17 @@ export default function ProductPage() {
     { id: "shipping", icon: <Truck size={16}/>, title: "Turnaround & Shipping", content: "Standard orders: 7–10 business days after proof approval. Rush orders available — contact us before ordering. Free shipping on orders over $400. New logos require digitizing — allow 1 additional business day." },
   ];
 
+  const updateURL = (key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(key, value);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   useEffect(() => {
-    // 1. Cargar el Logo del cliente
     const savedLogo = localStorage.getItem("user_custom_logo");
     if (savedLogo) setUploadedLogo(savedLogo);
 
     async function fetchProductAndSettings() {
-      // Cargar configuración global del Administrador
       const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
       if (settings) {
         if (settings.decoration_tiers) setDecorationTiers(settings.decoration_tiers);
@@ -94,8 +109,12 @@ export default function ProductPage() {
         if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
       }
 
-      // Cargar Producto y Variaciones
-      const { data: productData } = await supabase.from("products_unique_styles").select("*").eq("id", id).single();
+      // 🚀 BUSGAMOS EL PRODUCTO USANDO EL SLUG
+      const { data: productData } = await supabase
+        .from("products_unique_styles")
+        .select("*")
+        .eq("slug", slug)
+        .single();
       
       if (productData) {
         setProduct(productData);
@@ -121,17 +140,35 @@ export default function ProductPage() {
           setAvailableColorObjects(colorsObj);
           setAvailableSizes(sizes);
           
-          if (colorsObj.length > 0) setSelectedColor(colorsObj[0].name);
-          if (sizes.length > 0) setSelectedSize(sizes[0]);
+          const urlColor = searchParams.get("color");
+          const urlSize = searchParams.get("size");
+
+          if (colorsObj.length > 0) {
+            let matchedColor = null;
+            if (urlColor) {
+              matchedColor = colorsObj.find(c => c.name === urlColor);
+              if (!matchedColor) {
+                const colorGroup = MAIN_COLORS.find(mc => mc.name === urlColor);
+                if (colorGroup) {
+                  matchedColor = colorsObj.find(c => c.name.toLowerCase().includes(colorGroup.base));
+                }
+              }
+            }
+            setSelectedColor(matchedColor ? matchedColor.name : colorsObj[0].name);
+          }
+          
+          if (sizes.length > 0) {
+            const matchedSize = sizes.find(s => s === urlSize);
+            setSelectedSize(matchedSize ? matchedSize : sizes[0]);
+          }
         }
       }
       setLoading(false);
     }
 
-    if (id) fetchProductAndSettings();
-  }, [id]);
+    if (slug) fetchProductAndSettings();
+  }, [slug, searchParams]);
 
-  // EFECTO CUANDO CAMBIA EL COLOR O TALLA
   useEffect(() => {
     if (variants.length > 0 && selectedColor) {
       const variantsOfColor = variants.filter(v => v.color_name === selectedColor);
@@ -147,8 +184,7 @@ export default function ProductPage() {
       setGallery(colorImages.slice(0, 8));
       if (colorImages.length > 0) setMainImage(colorImages[0]);
 
-      // Buscar exactamente la variante seleccionada
-      const exactVariant = variantsOfColor.find(v => v.size === selectedSize);
+      const exactVariant = variantsOfColor.find(v => v.size === selectedSize) || variantsOfColor[0];
       
       if (exactVariant) {
         const exactPrice = parseFloat(exactVariant.msrp || exactVariant.price || 0);
@@ -179,6 +215,15 @@ export default function ProductPage() {
     localStorage.removeItem("user_custom_logo");
   };
 
+  // Función para manejar la aceptación del modal
+  const handleAcceptLegalWarning = () => {
+    setIsLegalWarningOpen(false);
+    // Programáticamente hacemos clic en el input de archivo oculto
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
   let availableLocations: string[] = [];
   const catUpper = product?.category?.toUpperCase() || "";
 
@@ -199,7 +244,6 @@ export default function ProductPage() {
     availableLocations = ["Standard Location"];
   }
 
-  // USAR TIERS DINÁMICOS DESDE EL ADMIN
   const currentTier = decorationTiers.find(t => quantity >= t.min && quantity <= t.max) || decorationTiers[decorationTiers.length - 1];
   const addedPrice = decorationMethod ? currentTier[decorationMethod as "emb" | "sp"] : 0;
   const unitPrice = basePrice + addedPrice;
@@ -228,7 +272,7 @@ export default function ProductPage() {
       size: selectedSize,
       color: selectedColor,
       decorationMethod: decorationMethod.toUpperCase(),
-      // @ts-expect-error: Ignoramos el error de tipo para forzar el build
+      // @ts-expect-error
       location: selectedLocation,
       extraComments: extraComments
     });
@@ -282,7 +326,6 @@ export default function ProductPage() {
             <h1 className="text-4xl lg:text-5xl font-black uppercase tracking-tighter text-black mb-4 leading-none">{product.title || product.product_name}</h1>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Style: {product.style}</p>
 
-            {/* ✅ DESCRIPCIÓN DEL PRODUCTO */}
             {product.description && (
               <div className="mb-6">
                 <p className="text-xs font-medium text-gray-600 leading-relaxed">
@@ -291,7 +334,6 @@ export default function ProductPage() {
               </div>
             )}
 
-            {/* ✅ PESO POR PIEZA */}
             {product.weight && (
               <div className="mb-6">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
@@ -310,7 +352,12 @@ export default function ProductPage() {
               <div className="flex flex-wrap gap-3">
                 {availableColorObjects.map(color => (
                   <button
-                    key={color.name} onClick={() => setSelectedColor(color.name)} title={color.name}
+                    key={color.name} 
+                    onClick={() => {
+                      setSelectedColor(color.name);
+                      updateURL("color", color.name);
+                    }} 
+                    title={color.name}
                     className={`w-[4.5rem] h-20 rounded-xl overflow-hidden border-2 transition-all p-1 bg-gray-50 ${selectedColor === color.name ? 'border-blue-600 ring-2 ring-blue-100 shadow-md' : 'border-gray-200 hover:border-gray-400'}`}
                   >
                     <div className="w-full h-full relative rounded-lg overflow-hidden bg-white">
@@ -330,7 +377,11 @@ export default function ProductPage() {
               <div className="flex flex-wrap gap-2">
                 {availableSizes.map(size => (
                   <button
-                    key={size} onClick={() => setSelectedSize(size)}
+                    key={size} 
+                    onClick={() => {
+                      setSelectedSize(size);
+                      updateURL("size", size);
+                    }}
                     className={`min-w-[3rem] h-12 px-3 flex items-center justify-center border-2 text-[11px] font-black rounded-xl transition-all ${selectedSize === size ? 'border-black bg-black text-white shadow-md' : 'border-gray-100 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
                   >
                     {size}
@@ -362,13 +413,25 @@ export default function ProductPage() {
             {decorationMethod && (
               <div className="mb-10 w-full border-2 border-dashed border-gray-300 rounded-3xl p-8 flex flex-col items-center justify-center bg-gray-50 transition-all relative animate-in fade-in">
                 <button onClick={() => setIsPlacementGuideOpen(true)} className="text-blue-600 hover:text-blue-800 font-bold mb-4 text-sm underline transition-colors cursor-pointer">Placement Guide</button>
+                
+                {/* Input oculto para manejar la subida del archivo */}
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  className="hidden" 
+                  accept=".jpg,.png,.pdf,.ai,.eps" 
+                  onChange={handleFileUpload} 
+                />
+
                 {!uploadedLogo ? (
                   <>
                     <p className="text-gray-600 text-xs mb-4">Upload Your File:</p>
-                    <label className="bg-[#3b5bdb] hover:bg-blue-700 text-white px-8 py-3 rounded-md cursor-pointer font-medium transition-colors shadow-sm text-sm">
+                    <button 
+                      onClick={() => setIsLegalWarningOpen(true)}
+                      className="bg-[#3b5bdb] hover:bg-blue-700 text-white px-8 py-3 rounded-md cursor-pointer font-medium transition-colors shadow-sm text-sm"
+                    >
                       Upload Your File
-                      <input type="file" className="hidden" accept=".jpg,.png,.pdf,.ai,.eps" onChange={handleFileUpload} />
-                    </label>
+                    </button>
                   </>
                 ) : (
                   <div className="flex flex-col items-center gap-4 animate-fade-in w-full">
@@ -380,10 +443,12 @@ export default function ProductPage() {
                       <img src={uploadedLogo} alt="Logo Preview" className="max-w-full max-h-full object-contain drop-shadow-sm" />
                       <button onClick={removeLogo} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600 hover:scale-110 transition-all"><X size={14} /></button>
                     </div>
-                    <label className="text-xs text-[#3b5bdb] cursor-pointer hover:underline font-semibold tracking-wide">
+                    <button 
+                      onClick={() => setIsLegalWarningOpen(true)}
+                      className="text-xs text-[#3b5bdb] cursor-pointer hover:underline font-semibold tracking-wide"
+                    >
                       Replace File
-                      <input type="file" className="hidden" accept=".jpg,.png,.pdf,.ai,.eps" onChange={handleFileUpload} />
-                    </label>
+                    </button>
 
                     <div className="w-full mt-6 text-left border-t border-gray-200 pt-6">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Select Logo Location *</label>
@@ -405,31 +470,16 @@ export default function ProductPage() {
               </div>
             )}
 
-            {/* TABLA DE PRECIOS B2B (Dinámica según el Admin) */}
-            <div className="mb-10 bg-gray-50 rounded-3xl p-6 border border-gray-100">
-              <div className="bg-white rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
-                <div className="grid grid-cols-3 bg-gray-900 text-white p-3 text-[9px] font-black uppercase tracking-widest text-center">
-                  <div className="text-left pl-2">Quantity</div><div>EMB Price</div><div>SP Price</div>
-                </div>
-                {decorationTiers.map((tier, idx) => (
-                  <div key={idx} className={`grid grid-cols-3 p-3 text-[11px] font-bold text-center border-b border-gray-100 last:border-0 transition-colors ${quantity >= tier.min && quantity <= tier.max ? "bg-blue-50 text-blue-600" : "text-gray-500 hover:bg-gray-50"}`}>
-                    <div className="text-left pl-2">{tier.min}{tier.max === 499 ? "+" : ` - ${tier.max}`}</div>
-                    <div className={decorationMethod === 'emb' ? "text-black font-black" : ""}>${(basePrice + tier.emb).toFixed(2)}</div>
-                    <div className={decorationMethod === 'sp' ? "text-black font-black" : ""}>${(basePrice + tier.sp).toFixed(2)}</div>
-                  </div>
-                ))}
+            {/* ✅ SOLO ALERTA DE SMALL ORDER FEE (Tabla de precios B2B Oculta) */}
+            {totalSubtotal < feeThreshold && quantity < 500 && (
+              <div className="mb-10 p-5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+                <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-[11px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
+                  Orders under ${feeThreshold} are subject to a ${feeAmount} small order processing fee at checkout. <br/>
+                  <span className="font-black text-amber-600 block mt-1">You are ${(feeThreshold - totalSubtotal).toFixed(2)} away from waiving this fee!</span>
+                </p>
               </div>
-              
-              {totalSubtotal < feeThreshold && quantity < 500 && (
-                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-                  <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-[10px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
-                    Orders under ${feeThreshold} are subject to a ${feeAmount} small order processing fee at checkout. <br/>
-                    <span className="font-black text-amber-600">You are ${(feeThreshold - totalSubtotal).toFixed(2)} away from waiving this fee!</span>
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
 
             {/* CANTIDAD Y AÑADIR AL CARRITO */}
             <div className="flex items-end gap-6 mb-10 pb-10 border-b border-gray-100">
@@ -465,7 +515,36 @@ export default function ProductPage() {
       </div>
       <Footer />
 
-      {/* MODALES */}
+      {/* MODAL: ADVERTENCIA LEGAL */}
+      {isLegalWarningOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+              <ShieldCheck size={32} className="text-red-500" />
+            </div>
+            <h3 className="text-xl font-black uppercase tracking-tighter text-black mb-2">Notice</h3>
+            <p className="text-xs font-bold text-gray-500 mb-8 uppercase tracking-widest leading-relaxed">
+              YOU CONFIRM YOU HAVE LEGAL RIGHT TO USE UPLOADED LOGO. WE WILL CANCEL ORDER IF RIGHTS CANNOT BE ESTABLISHED.
+            </p>
+            <div className="flex w-full gap-3">
+              <button 
+                onClick={() => setIsLegalWarningOpen(false)} 
+                className="flex-1 py-4 bg-gray-100 text-gray-600 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleAcceptLegalWarning} 
+                className="flex-1 py-4 bg-black text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-[#8012d8] transition-colors shadow-lg"
+              >
+                I Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OTROS MODALES */}
       {validationError && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
@@ -506,5 +585,17 @@ export default function ProductPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function ProductPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <ProductPageContent />
+    </Suspense>
   );
 }

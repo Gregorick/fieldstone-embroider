@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function ContactUs() {
   return (
-    <section className="relative w-full min-h-[80vh] flex items-center overflow-hidden bg-black">
+    <section id="contactus" className="relative w-full min-h-[80vh] flex items-center overflow-hidden bg-black">
       
       {/* 🎥 VIDEO DE FONDO (SIN PARALLAX) */}
       <div className="absolute top-0 left-0 w-full h-full z-0 pointer-events-none">
