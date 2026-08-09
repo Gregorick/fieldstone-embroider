@@ -2,75 +2,54 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    // 1. Limpieza y validación estricta de variables
     const token = process.env.CLOVER_API_TOKEN?.trim();
     const merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
 
     if (!token || !merchantId) {
-      console.error("❌ ERROR: Credenciales de Clover no configuradas en .env.local");
+      console.error("❌ ERROR: Credenciales de Clover faltantes");
       return NextResponse.json({ error: 'Configuración interna faltante' }, { status: 500 });
     }
 
-    // 🚨 Recibimos también shippingCost y smallOrderFee
     const { items, email, shippingCost, smallOrderFee } = await req.json(); 
     
-    if (!items || items.length === 0) {
-      return NextResponse.json({ error: 'El carrito está vacío' }, { status: 400 });
+    let totalItemsCents = 0;
+    if (items && items.length > 0) {
+      items.forEach((item: any) => {
+        totalItemsCents += Math.round(Number(item.price) * 100) * item.quantity;
+      });
     }
 
-    // 2. AGRUPAMOS PRODUCTOS
-    const itemMap = new Map();
-    items.forEach((item: any) => {
-      const name = item.title || "Producto";
-      const note = `${item.size || ''} ${item.color || ''}`.trim();
-      const price = Math.round(Number(item.price) * 100); 
-      const quantity = Number(item.quantity) || 1; 
-      const key = `${name}-${note}`;
+    const shippingCents = Math.round(Number(shippingCost || 0) * 100);
+    const feeCents = Math.round(Number(smallOrderFee || 0) * 100);
+    const grandTotalCents = totalItemsCents + shippingCents + feeCents;
 
-      if (itemMap.has(key)) {
-        itemMap.get(key).unitQty += quantity;
-      } else {
-        itemMap.set(key, { name, unitQty: quantity, price, note });
+    const finalPrice = grandTotalCents > 0 ? grandTotalCents : 150;
+
+    // Sin el campo "id" para evitar que Clover busque un producto que no existe en su BD
+    const payload = {
+      currency: "USD",
+      customer: {
+        email: email || "gregorick.liriano@gmail.com",
+        firstName: "Cliente"
+      },
+      shoppingCart: { 
+        lineItems: [
+          {
+            name: "Fieldstone Store Order",
+            unitQty: 1,
+            price: finalPrice
+          }
+        ] 
+      },
+      redirectUrls: {
+        success: "https://fieldstoneembroidery.com/fieldstone-embroider/success",
+        failure: "https://fieldstoneembroidery.com/fieldstone-embroider/error",
+        cancel: "https://fieldstoneembroidery.com/fieldstone-embroider/cart"
       }
-    });
+    };
 
-    const cloverLineItems = Array.from(itemMap.values()).map((item: any) => ({
-      name: item.unitQty > 1 ? `[${item.unitQty}x] ${item.name}` : item.name,
-      price: item.price * (item.unitQty > 1 ? item.unitQty : 1), 
-      unitQty: 1, 
-      note: item.note
-    }));
+    console.log("👉 ENVIANDO A CLOVER:", JSON.stringify(payload, null, 2));
 
-    // 🚨 2.1. Agregamos el costo de envío si aplica (mayor a 0)
-    if (shippingCost && Number(shippingCost) > 0) {
-      cloverLineItems.push({
-        name: "Shipping Fee",
-        price: Math.round(Number(shippingCost) * 100),
-        unitQty: 1,
-        note: "Standard Delivery"
-      });
-    }
-
-    // 🚨 2.2. Agregamos el Small Order Fee si aplica (menor a $300)
-    if (smallOrderFee && Number(smallOrderFee) > 0) {
-      cloverLineItems.push({
-        name: "Small Order Processing Fee",
-        price: Math.round(Number(smallOrderFee) * 100),
-        unitQty: 1,
-        note: "Orders under $300"
-      });
-    }
-
-    // 3. CONFIGURACIÓN DE URL
-    const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
-    
-    const domain = process.env.NODE_ENV === 'development' 
-      ? 'https://wireless-ambiguity-bloating.ngrok-free.dev/' 
-      : `https://${host}`;
-      
-    const baseUrl = `${domain}/fieldstone-embroider`;
-
-    // 4. PETICIÓN A CLOVER
     const cloverUrl = 'https://apisandbox.dev.clover.com/invoicingcheckoutservice/v1/checkouts';
     
     const response = await fetch(cloverUrl, {
@@ -80,25 +59,14 @@ export async function POST(req: Request) {
         'X-Clover-Merchant-Id': merchantId,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        customer: {
-          email: email || "gregorick.liriano@gmail.com",
-          firstName: "Cliente",
-          lastName: "Fieldstone"
-        },
-        shoppingCart: { lineItems: cloverLineItems },
-        redirectUrls: {
-          success: `${baseUrl}/success`,
-          failure: `${baseUrl}/error`,
-          cancel: `${baseUrl}/cart`
-        }
-      }),
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
-    
+    console.log("👉 RESPUESTA DE CLOVER:", data);
+
     if (!response.ok) {
-      console.error("❌ Clover rechazó la petición. Estado:", response.status, "Detalles:", data);
+      console.error("❌ Clover rechazó la petición:", data);
       return NextResponse.json({ error: 'Clover rechazó el pago', details: data }, { status: response.status });
     }
     

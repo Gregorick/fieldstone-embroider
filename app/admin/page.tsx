@@ -7,7 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { 
   LayoutDashboard, ShoppingBag, FolderTree, User, Users, UserPlus,
   LogOut, Search, Eye, Edit, Check, X, Camera, Save, Lock,
-  Package, ChevronDown, Download, BarChart3, Trash2, DollarSign, Truck
+  Package, ChevronDown, Download, BarChart3, Trash2, DollarSign, Truck,
+  ChevronLeft, ChevronRight, BellRing, ArrowUpRight, Send, AlertTriangle
 } from "lucide-react";
 
 const DEFAULT_TIERS = [
@@ -35,11 +36,17 @@ export default function AdminDashboard() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState(""); 
   
-  const [isGeneratingLabel, setIsGeneratingLabel] = useState(false);
-  const [packageLength, setPackageLength] = useState<number>(12);
-  const [packageWidth, setPackageWidth] = useState<number>(12);
-  const [packageHeight, setPackageHeight] = useState<number>(2);
-  const [packageWeight, setPackageWeight] = useState<number>(80);
+  const [unseenOrders, setUnseenOrders] = useState<any[]>([]);
+  
+  const [currentPage, setCurrentPage] = useState(1);
+  const ordersPerPage = 10;
+  
+  const [trackingUrlInput, setTrackingUrlInput] = useState("");
+  const [isSendingTracking, setIsSendingTracking] = useState(false);
+
+  // ESTADOS PARA EL MODAL DE CONFIRMACIÓN DE STATUS
+  const [pendingStatusChange, setPendingStatusChange] = useState<{order: any, newStatus: string} | null>(null);
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [visibleCategories, setVisibleCategories] = useState<string[]>([]);
@@ -69,7 +76,7 @@ export default function AdminDashboard() {
     setAdminUser(user);
     setProfile({ first_name: profileData.first_name || "", last_name: profileData.last_name || "", avatar_url: profileData.avatar_url || "" });
 
-    fetchOrders();
+    await fetchOrders();
     fetchUsers();
 
     const { data: catData } = await supabase.rpc("get_unique_categories");
@@ -92,7 +99,28 @@ export default function AdminDashboard() {
 
   const fetchOrders = async () => {
     const { data } = await supabase.from("orders").select(`*, order_items (*)`).order("created_at", { ascending: false });
-    if (data) setOrders(data);
+    if (data) {
+      setOrders(data);
+      const viewedIds = JSON.parse(localStorage.getItem("viewed_order_ids") || "[]");
+      const freshOrders = data.filter(o => !viewedIds.includes(o.id));
+      setUnseenOrders(freshOrders);
+    }
+  };
+
+  const handleOpenOrder = (order: any) => {
+    setSelectedOrder(order);
+    setTrackingUrlInput("");
+    
+    if (unseenOrders.some(o => o.id === order.id)) {
+      const updatedUnseen = unseenOrders.filter(o => o.id !== order.id);
+      setUnseenOrders(updatedUnseen);
+      
+      const viewedIds = JSON.parse(localStorage.getItem("viewed_order_ids") || "[]");
+      if (!viewedIds.includes(order.id)) {
+        viewedIds.push(order.id);
+        localStorage.setItem("viewed_order_ids", JSON.stringify(viewedIds));
+      }
+    }
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
@@ -103,31 +131,82 @@ export default function AdminDashboard() {
     } else alert("Error updating order: " + error.message);
   };
 
-  const handleGenerateLabel = async () => {
-    if (!packageWeight || !packageLength || !packageWidth || !packageHeight) return alert("Please fill in all package dimensions and weight.");
-    if (!confirm(`Generate a UPS label for a ${packageLength}x${packageWidth}x${packageHeight} package weighing ${packageWeight}oz?`)) return;
+  // 🚀 LÓGICA DE INTERCEPCIÓN DEL SELECT STATUS
+  const handleStatusChangeClick = (order: any, newStatus: string) => {
+    // Si elige shipped, delivered o completed, abrimos el warning
+    if (['shipped', 'delivered', 'completed'].includes(newStatus)) {
+      setPendingStatusChange({ order, newStatus });
+    } else {
+      // Si vuelve a processing u otro estado interno, lo cambiamos sin alertar (ni enviar correo)
+      updateOrderStatus(order.id, newStatus);
+    }
+  };
+
+  const confirmStatusChange = async () => {
+    if (!pendingStatusChange) return;
+    setIsStatusUpdating(true);
     
-    setIsGeneratingLabel(true);
+    const { order, newStatus } = pendingStatusChange;
+    
+    // 1. Actualizamos en base de datos
+    await updateOrderStatus(order.id, newStatus);
+
+    // 2. Simulamos/Disparamos el envío de correo (Se enviaría a un endpoint tuyo, ej: /api/notify-status)
     try {
-      const res = await fetch('/fieldstone-embroider/api/easypost', {
+      await fetch('/fieldstone-embroider/api/notify-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: selectedOrder.id, weightOz: packageWeight, length: packageLength, width: packageWidth, height: packageHeight }) 
+        body: JSON.stringify({ 
+          orderId: order.id, 
+          status: newStatus,
+          email: order.customer_email,
+          name: order.customer_name
+        })
+      });
+    } catch (err) {
+      console.error("Error trigger email", err);
+    }
+
+    setIsStatusUpdating(false);
+    setPendingStatusChange(null);
+  };
+
+  const cancelStatusChange = () => {
+    // Al setear en null sin actualizar la base de datos, el select vuelve automáticamente a su valor original
+    setPendingStatusChange(null);
+  };
+
+  const handleSendTracking = async () => {
+    if (!trackingUrlInput.trim()) return alert("Please paste the tracking link.");
+    
+    setIsSendingTracking(true);
+    try {
+      const res = await fetch('/fieldstone-embroider/api/easypost', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          orderId: selectedOrder.id, 
+          trackingUrl: trackingUrlInput.trim() 
+        }) 
       });
       
-      const contentType = res.headers.get("content-type");
-      if (!res.ok) {
-        if (contentType && contentType.includes("application/json")) throw new Error((await res.json()).error || "Error API");
-        else throw new Error("Endpoint no encontrado.");
-      }
-      
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to update tracking.");
       
-      setSelectedOrder({ ...selectedOrder, tracking_number: data.trackingNumber, shipping_label_url: data.labelUrl, tracking_url: data.trackingUrl, order_status: 'shipped' });
+      setSelectedOrder({ 
+        ...selectedOrder, 
+        tracking_url: trackingUrlInput.trim(), 
+        order_status: 'shipped' 
+      });
+      
       fetchOrders(); 
-      alert("Success! UPS Label generated and order marked as Shipped.");
-    } catch (error: any) { alert("Failed to generate label: " + error.message); } finally { setIsGeneratingLabel(false); }
+      setTrackingUrlInput("");
+      alert("Success! The customer has been notified and the order is marked as Shipped.");
+    } catch (error: any) { 
+      alert("Error: " + error.message); 
+    } finally { 
+      setIsSendingTracking(false); 
+    }
   };
 
   const chartData = useMemo(() => {
@@ -159,6 +238,16 @@ export default function AdminDashboard() {
     );
   }, [orders, searchQuery]);
 
+  const totalPages = Math.ceil(filteredOrders.length / ordersPerPage) || 1;
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * ordersPerPage;
+    return filteredOrders.slice(start, start + ordersPerPage);
+  }, [filteredOrders, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
   const fetchUsers = async () => { const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }); if (data) setUsersList(data); };
   
   const updateUserRole = async (userId: string, newRole: string) => {
@@ -183,11 +272,29 @@ export default function AdminDashboard() {
 
   const toggleCategoryVisibility = (cat: string) => setVisibleCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   const toggleBrandVisibility = (brand: string) => setVisibleBrands(prev => prev.includes(brand) ? prev.filter(b => b !== brand) : [...prev, brand]);
-  const handleTierPriceChange = (index: number, method: 'emb' | 'sp', value: string) => { const newTiers = [...pricingTiers]; newTiers[index][method] = Number(value); setPricingTiers(newTiers); };
+  
+  const handleTierPriceChange = (index: number, method: 'emb' | 'sp', value: string) => { 
+    const newTiers = [...pricingTiers]; 
+    newTiers[index][method] = Number(value); 
+    setPricingTiers(newTiers); 
+  };
+
+  const handleTierRangeChange = (index: number, field: 'min' | 'max', value: string) => {
+    const newTiers = [...pricingTiers];
+    newTiers[index][field] = Number(value);
+    setPricingTiers(newTiers);
+  };
 
   const saveSettings = async () => {
     setLoading(true);
-    const { error } = await supabase.from("store_settings").upsert({ id: "default", visible_categories: visibleCategories, visible_brands: visibleBrands, small_order_fee_threshold: feeThreshold, small_order_fee_amount: feeAmount, decoration_tiers: pricingTiers });
+    const { error } = await supabase.from("store_settings").upsert({ 
+      id: "default", 
+      visible_categories: visibleCategories, 
+      visible_brands: visibleBrands, 
+      small_order_fee_threshold: feeThreshold, 
+      small_order_fee_amount: feeAmount, 
+      decoration_tiers: pricingTiers 
+    });
     setLoading(false);
     if (error) alert("Error saving settings: " + error.message); else alert("Store settings updated successfully!");
   };
@@ -274,7 +381,8 @@ export default function AdminDashboard() {
                 <Package className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-50 opacity-50" />
               </div>
             </div>
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 mb-8">
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-lg font-black uppercase tracking-widest text-black">Revenue Analytics</h3>
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 bg-gray-50 px-3 py-1 rounded-full">Last 12 Months</span>
@@ -303,6 +411,60 @@ export default function AdminDashboard() {
                 })}
               </div>
             </div>
+
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <BellRing size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black uppercase tracking-widest text-black">New Order Alerts</h3>
+                    <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Unseen live incoming store orders</p>
+                  </div>
+                </div>
+                {unseenOrders.length > 0 && (
+                  <span className="px-3 py-1 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full animate-pulse">
+                    {unseenOrders.length} New
+                  </span>
+                )}
+              </div>
+
+              {unseenOrders.length === 0 ? (
+                <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                  <Package size={32} className="mx-auto text-gray-300 mb-2" />
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No new incoming orders right now.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {unseenOrders.map(order => (
+                    <div key={order.id} className="p-5 bg-gradient-to-r from-blue-50/40 to-white border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:shadow-md">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                          <h4 className="text-xs font-black text-black uppercase tracking-wider">
+                            Order: #{order.id.split('-')[0]}
+                          </h4>
+                          <span className="text-[9px] font-black uppercase bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md">
+                            ${Number(order.total_amount).toFixed(2)}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-gray-800">{order.customer_name} <span className="text-gray-500 font-normal">({order.customer_email})</span></p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{new Date(order.created_at).toLocaleString()}</p>
+                      </div>
+
+                      <button 
+                        onClick={() => handleOpenOrder(order)}
+                        className="px-5 py-2.5 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                      >
+                        <Eye size={14} /> View Details & Mark Read
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 
@@ -319,7 +481,7 @@ export default function AdminDashboard() {
                   placeholder="Search Trans ID, Order ID, Customer..." 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-gray-200 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
+                  className="w-full bg-white border border-gray-300 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -329,10 +491,10 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
                     <th className="p-6">Order Info</th>
                     <th className="p-6">Customer</th>
                     <th className="p-6">Total</th>
@@ -341,58 +503,87 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOrders.length === 0 ? (
+                  {paginatedOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-400 text-sm font-medium">
+                      <td colSpan={5} className="p-8 text-center text-gray-500 text-sm font-medium">
                         No orders found matching "{searchQuery}"
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map(order => (
-                      <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    paginatedOrders.map(order => (
+                      <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                         <td className="p-6">
                           <p className="text-xs font-bold text-black uppercase tracking-wider mb-1">
                             Order: #{order.id.split('-')[0]}
                           </p>
                           
-                          {/* CLOVER TRANS ID SIEMPRE VISIBLE */}
                           <div className="flex items-center gap-1.5 mb-2">
                              <div className={`w-2 h-2 rounded-full shadow-sm ${order.payment_id ? 'bg-blue-500' : 'bg-amber-400'}`}></div>
-                             <p className={`text-[10px] font-black uppercase tracking-widest ${order.payment_id ? 'text-blue-600' : 'text-amber-600'}`}>
+                             <p className={`text-[10px] font-black uppercase tracking-widest ${order.payment_id ? 'text-blue-700' : 'text-amber-700'}`}>
                                CLOVER ID: {order.payment_id || "PENDIENTE"}
                              </p>
                           </div>
 
-                          <p className="text-[10px] text-gray-400">{new Date(order.created_at).toLocaleString()}</p>
+                          <p className="text-[10px] text-gray-500">{new Date(order.created_at).toLocaleString()}</p>
                         </td>
                         <td className="p-6">
                           <p className="text-xs font-bold text-black">{order.customer_name}</p>
-                          <p className="text-[10px] text-gray-400 mt-1">{order.customer_email}</p>
+                          <p className="text-[10px] text-gray-500 mt-1">{order.customer_email}</p>
                         </td>
                         <td className="p-6 text-sm font-black text-black">${Number(order.total_amount).toFixed(2)}</td>
                         <td className="p-6">
                           <select 
-                            value={order.order_status} onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                            className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-gray-50 border-gray-200"
+                            value={order.order_status} onChange={(e) => handleStatusChangeClick(order, e.target.value)}
+                            className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50"
                           >
                             <option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="completed">Completed</option>
                           </select>
                         </td>
                         <td className="p-6 text-right">
-                          <button onClick={() => setSelectedOrder(order)} className="p-2 bg-black text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"><Eye size={14} /> View</button>
+                          <button onClick={() => handleOpenOrder(order)} className="p-2 bg-black text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"><Eye size={14} /> View</button>
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
+
+              {filteredOrders.length > 0 && (
+                <div className="p-6 border-t border-gray-200 flex items-center justify-between bg-gray-50/50">
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Showing <span className="text-black font-black">{((currentPage - 1) * ordersPerPage) + 1}</span> to <span className="text-black font-black">{Math.min(currentPage * ordersPerPage, filteredOrders.length)}</span> of <span className="text-black font-black">{filteredOrders.length}</span> orders
+                  </p>
+                  
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    
+                    <span className="text-xs font-black uppercase tracking-widest px-4 py-2 bg-white border border-gray-300 text-black rounded-xl shadow-sm">
+                      Page {currentPage} of {totalPages}
+                    </span>
+
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* PESTAÑA: REGLAS DE PRECIOS */}
         {activeTab === "pricing" && (
-          <div className="animate-in fade-in duration-500 max-w-4xl">
+          <div className="animate-in fade-in duration-500 max-w-5xl">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Pricing Rules</h2>
               <button onClick={saveSettings} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2">
@@ -400,63 +591,76 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 mb-8 flex gap-4 items-start">
+            <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-200 mb-8 flex gap-4 items-start">
               <div className="bg-blue-600 p-2 rounded-full text-white mt-1"><DollarSign size={20} /></div>
               <div>
                 <h3 className="text-sm font-black uppercase tracking-widest text-blue-900 mb-2">How Pricing Rules Work</h3>
                 <p className="text-xs font-medium text-blue-800/80 leading-relaxed max-w-3xl">
-                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and the quantity ordered. You can also modify the threshold for the <strong>Small Order Fee</strong>.
+                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and modify both the quantity range bounds and the Small Order Fee threshold.
                 </p>
               </div>
             </div>
 
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Small Order Threshold ($)</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Small Order Threshold ($)</label>
                 <div className="relative">
-                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="number" value={feeThreshold} onChange={(e) => setFeeThreshold(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm font-black text-black outline-none focus:border-blue-600 transition-colors"/>
+                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input type="number" value={feeThreshold} onChange={(e) => setFeeThreshold(Number(e.target.value))} className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Small Order Fee Amount ($)</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Small Order Fee Amount ($)</label>
                 <div className="relative">
-                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm font-black text-black outline-none focus:border-blue-600 transition-colors"/>
+                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(Number(e.target.value))} className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 bg-gray-50">
-                <h3 className="text-lg font-black uppercase tracking-widest text-black">Decoration Price Tiers</h3>
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black">Decoration Price Tiers & Quantity Ranges</h3>
               </div>
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-white border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                    <th className="p-6">Quantity Range</th>
+                  <tr className="bg-white border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                    <th className="p-6">Quantity Range (Min - Max)</th>
                     <th className="p-6">Embroidery (EMB) Price Added</th>
                     <th className="p-6">Screen Print (SP) Price Added</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pricingTiers.map((tier, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="p-6">
-                        <span className="px-4 py-2 bg-gray-100 text-black text-xs font-black rounded-lg">
-                          {tier.min} {tier.max === 499 ? "+" : `- ${tier.max}`} items
-                        </span>
-                      </td>
-                      <td className="p-6">
-                        <div className="relative w-32">
-                          <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input type="number" step="0.01" value={tier.emb} onChange={(e) => handleTierPriceChange(idx, 'emb', e.target.value)} className="w-full bg-white border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="number" 
+                            value={tier.min} 
+                            onChange={(e) => handleTierRangeChange(idx, 'min', e.target.value)} 
+                            className="w-20 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 text-center shadow-sm"
+                          />
+                          <span className="text-gray-500 font-black">to</span>
+                          <input 
+                            type="number" 
+                            value={tier.max} 
+                            onChange={(e) => handleTierRangeChange(idx, 'max', e.target.value)} 
+                            className="w-20 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 text-center shadow-sm"
+                          />
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">items</span>
                         </div>
                       </td>
                       <td className="p-6">
                         <div className="relative w-32">
-                          <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input type="number" step="0.01" value={tier.sp} onChange={(e) => handleTierPriceChange(idx, 'sp', e.target.value)} className="w-full bg-white border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                          <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                          <input type="number" step="0.01" value={tier.emb} onChange={(e) => handleTierPriceChange(idx, 'emb', e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                        </div>
+                      </td>
+                      <td className="p-6">
+                        <div className="relative w-32">
+                          <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                          <input type="number" step="0.01" value={tier.sp} onChange={(e) => handleTierPriceChange(idx, 'sp', e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
                         </div>
                       </td>
                     </tr>
@@ -467,31 +671,35 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: USUARIOS Y DEMÁS TABS... */}
+        {/* PESTAÑA: USUARIOS */}
         {activeTab === "users" && (
           <div className="animate-in fade-in duration-500">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Manage Users</h2>
               <button onClick={() => setIsUserModalOpen(true)} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"><UserPlus size={14} /> Add New User</button>
             </div>
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
                     <th className="p-6">User Details</th><th className="p-6">Email Address</th><th className="p-6">Role</th><th className="p-6">Joined Date</th><th className="p-6 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {usersList.map(u => (
-                    <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="p-6 flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 overflow-hidden flex-shrink-0">{u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400" />}</div>
-                        <div><p className="text-xs font-bold text-black uppercase tracking-wider">{u.first_name || "Unknown"} {u.last_name || ""}</p><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1">ID: {u.id.substring(0, 8)}</p></div>
+                        <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-300 overflow-hidden flex-shrink-0">{u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-500" />}</div>
+                        <div><p className="text-xs font-bold text-black uppercase tracking-wider">{u.first_name || "Unknown"} {u.last_name || ""}</p><p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mt-1">ID: {u.id.substring(0, 8)}</p></div>
                       </td>
-                      <td className="p-6"><p className="text-xs font-bold text-gray-600">{u.email || "No email recorded"}</p></td>
-                      <td className="p-6"><select value={u.role || 'customer'} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={u.id === adminUser.id} className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-gray-50 border-gray-200 disabled:opacity-50"><option value="customer">Customer</option><option value="admin">Admin</option></select></td>
-                      <td className="p-6"><p className="text-xs font-bold text-gray-500">{new Date(u.created_at).toLocaleDateString()}</p></td>
-                      <td className="p-6 text-right"><button onClick={() => deleteUser(u.id)} disabled={u.id === adminUser.id} className="p-2 bg-white border border-gray-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"><Trash2 size={16} /></button></td>
+                      <td className="p-6"><p className="text-xs font-bold text-gray-800">{u.email || "No email recorded"}</p></td>
+                      <td className="p-6">
+                        <select value={u.role || 'customer'} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={u.id === adminUser.id} className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50 disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-500">
+                          <option value="customer">Customer</option><option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td className="p-6"><p className="text-xs font-bold text-gray-600">{new Date(u.created_at).toLocaleDateString()}</p></td>
+                      <td className="p-6 text-right"><button onClick={() => deleteUser(u.id)} disabled={u.id === adminUser.id} className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"><Trash2 size={16} /></button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -500,7 +708,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: CATEGORÍAS Y MARCAS */}
+        {/* PESTAÑA: CATEGORÍAS */}
         {activeTab === "categories" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
             <div className="flex justify-between items-center mb-8">
@@ -509,26 +717,26 @@ export default function AdminDashboard() {
                 <Save size={14} /> Save Changes
               </button>
             </div>
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 mb-8">
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8">
               <h3 className="text-lg font-black uppercase tracking-widest text-black mb-2">Visible Categories</h3>
               <p className="text-xs font-medium text-gray-500 mb-6">Select which categories should be displayed in the Shop sidebar.</p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {allCategories.map(cat => (
-                  <div key={cat} onClick={() => toggleCategoryVisibility(cat)} className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${visibleCategories.includes(cat) ? 'border-blue-600 bg-blue-50' : 'border-gray-100 hover:border-gray-200'}`}>
+                  <div key={cat} onClick={() => toggleCategoryVisibility(cat)} className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${visibleCategories.includes(cat) ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                     <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${visibleCategories.includes(cat) ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{visibleCategories.includes(cat) && <Check size={12} strokeWidth={4} />}</div>
-                    <span className={`text-xs font-bold uppercase tracking-widest ${visibleCategories.includes(cat) ? 'text-blue-700' : 'text-gray-600'}`}>{cat}</span>
+                    <span className={`text-xs font-bold uppercase tracking-widest ${visibleCategories.includes(cat) ? 'text-blue-700' : 'text-gray-800'}`}>{cat}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200">
               <h3 className="text-lg font-black uppercase tracking-widest text-black mb-2">Visible Brands</h3>
               <p className="text-xs font-medium text-gray-500 mb-6">Select which brands should be displayed in the Shop sidebar.</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar p-2">
                 {allBrands.map(brand => (
-                  <div key={brand} onClick={() => toggleBrandVisibility(brand)} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${visibleBrands.includes(brand) ? 'border-blue-600 bg-blue-50' : 'border-gray-100 hover:border-gray-200'}`}>
+                  <div key={brand} onClick={() => toggleBrandVisibility(brand)} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${visibleBrands.includes(brand) ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                     <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${visibleBrands.includes(brand) ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{visibleBrands.includes(brand) && <Check size={10} strokeWidth={4} />}</div>
-                    <span className={`text-[10px] font-bold uppercase tracking-widest truncate ${visibleBrands.includes(brand) ? 'text-blue-700' : 'text-gray-600'}`} title={brand}>{brand}</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest truncate ${visibleBrands.includes(brand) ? 'text-blue-700' : 'text-gray-800'}`} title={brand}>{brand}</span>
                   </div>
                 ))}
               </div>
@@ -536,20 +744,20 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: PERFIL ADMIN */}
+        {/* PESTAÑA: PERFIL */}
         {activeTab === "profile" && (
           <div className="animate-in fade-in duration-500 max-w-2xl">
             <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
-            <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 space-y-8">
-              <div className="flex items-center gap-8 pb-8 border-b border-gray-100">
-                <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-200">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
-                <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-400 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
+            <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-200 space-y-8">
+              <div className="flex items-center gap-8 pb-8 border-b border-gray-200">
+                <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-300">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
+                <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-500 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
               </div>
               <div className="grid grid-cols-2 gap-6">
-                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">First Name</label><input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
-                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Last Name</label><input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
-                <div className="col-span-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Email Address</label><input type="email" disabled value={adminUser?.email} className="w-full bg-gray-100 border border-transparent rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed"/></div>
-                <div className="col-span-2 pt-4"><h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2"><Lock size={14} /> Security</h4><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">New Password (leave blank to keep current)</label><input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
+                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name</label><input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name</label><input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                <div className="col-span-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label><input type="email" disabled value={adminUser?.email} className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed"/></div>
+                <div className="col-span-2 pt-4"><h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2"><Lock size={14} /> Security</h4><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">New Password (leave blank to keep current)</label><input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
               </div>
               <div className="pt-6"><button onClick={updateAdminProfile} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl">Save Admin Profile</button></div>
             </div>
@@ -557,92 +765,74 @@ export default function AdminDashboard() {
         )}
       </main>
 
-      {/* --- MODAL DETALLES DE LA ORDEN --- */}
+      {/* MODAL ORDEN */}
       {selectedOrder && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => setSelectedOrder(null)}>
           <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <div><h3 className="text-xl font-black uppercase tracking-tighter text-black">Order Details</h3><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">ID: {selectedOrder.id}</p></div>
-              <button onClick={() => setSelectedOrder(null)} className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors"><X size={20}/></button>
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <div><h3 className="text-xl font-black uppercase tracking-tighter text-black">Order Details</h3><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">ID: {selectedOrder.id}</p></div>
+              <button onClick={() => setSelectedOrder(null)} className="p-2 bg-white rounded-full text-gray-500 hover:text-black hover:bg-gray-200 transition-colors shadow-sm"><X size={20}/></button>
             </div>
             
             <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-8">
               
-              {/* ✅ SECCIÓN DE ENVÍO Y UPS (EASYPOST) CON DIMENSIONES Y PESO */}
-              <div className="bg-gray-50 border border-gray-200 p-6 rounded-2xl">
+              <div className="bg-gray-50 border border-gray-300 p-6 rounded-2xl shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2">
                     <Truck size={18} /> Shipping & Fulfillment
                   </h4>
-                  <span className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-full ${selectedOrder.tracking_number ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {selectedOrder.tracking_number ? 'Label Created' : 'Awaiting Fulfillment'}
+                  <span className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-full ${selectedOrder.tracking_url ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                    {selectedOrder.tracking_url ? 'Tracking Sent' : 'Awaiting Tracking'}
                   </span>
                 </div>
 
-                {selectedOrder.tracking_number ? (
-                  <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                {selectedOrder.tracking_url ? (
+                  <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-300 shadow-sm">
                     <div>
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">UPS Tracking Number</p>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Tracking Link</p>
                       <a href={selectedOrder.tracking_url} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-600 hover:underline">
-                        {selectedOrder.tracking_number}
+                        {selectedOrder.tracking_url.length > 50 ? selectedOrder.tracking_url.substring(0, 50) + "..." : selectedOrder.tracking_url}
                       </a>
                     </div>
-                    <a 
-                      href={selectedOrder.shipping_label_url} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-800 transition-colors flex items-center gap-2"
-                    >
-                      🖨️ Print Label
-                    </a>
                   </div>
                 ) : (
-                  <div className="bg-white p-6 rounded-xl border border-gray-200 border-dashed">
-                    <p className="text-xs font-bold text-gray-500 mb-6">
-                      Ready to ship? Enter the package details to generate a UPS label. Customs forms will be added automatically for international orders.
+                  <div className="bg-white p-6 rounded-xl border border-gray-300 border-dashed">
+                    <p className="text-xs font-bold text-gray-600 mb-6">
+                      Ready to ship? Paste the tracking link below to notify the customer.
                     </p>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                      <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Length (in)</label>
-                        <input type="number" min="1" value={packageLength} onChange={(e) => setPackageLength(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Width (in)</label>
-                        <input type="number" min="1" value={packageWidth} onChange={(e) => setPackageWidth(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Height (in)</label>
-                        <input type="number" min="1" value={packageHeight} onChange={(e) => setPackageHeight(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1">Weight (oz)</label>
-                        <input type="number" min="1" value={packageWeight} onChange={(e) => setPackageWeight(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                      </div>
+                    <div className="mb-6">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Tracking URL *</label>
+                      <input 
+                        type="url" 
+                        value={trackingUrlInput} 
+                        onChange={(e) => setTrackingUrlInput(e.target.value)} 
+                        placeholder="https://www.ups.com/track?loc=en_US&tracknum=..."
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" 
+                      />
                     </div>
 
                     <button 
-                      onClick={handleGenerateLabel}
-                      disabled={isGeneratingLabel}
+                      onClick={handleSendTracking}
+                      disabled={isSendingTracking || !trackingUrlInput.trim()}
                       className="w-full py-4 bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-700 transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                      {isGeneratingLabel ? (
+                      {isSendingTracking ? (
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <Package size={16} />
+                        <Send size={16} />
                       )}
-                      {isGeneratingLabel ? "Processing Label..." : "Generate UPS Label"}
+                      {isSendingTracking ? "Sending Notification..." : "Send Tracking to Customer"}
                     </button>
                   </div>
                 )}
               </div>
 
-              {/* MODAL: INFO DEL CLIENTE Y CLOVER ID */}
-              <div className={`grid grid-cols-2 ${selectedOrder.payment_id ? 'md:grid-cols-3' : ''} gap-8 p-6 bg-blue-50/50 border border-blue-100 rounded-2xl`}>
-                <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Customer Name</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_name}</p></div>
-                <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Contact Email</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_email}</p></div>
+              <div className={`grid grid-cols-2 ${selectedOrder.payment_id ? 'md:grid-cols-3' : ''} gap-8 p-6 bg-blue-50/50 border border-blue-200 rounded-2xl`}>
+                <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Customer Name</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_name}</p></div>
+                <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Contact Email</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_email}</p></div>
                 <div>
-                   <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Clover Trans. ID</p>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Clover Trans. ID</p>
                    <p className="text-sm font-bold text-blue-900 truncate" title={selectedOrder.payment_id}>
                      {selectedOrder.payment_id || "PENDIENTE"}
                    </p>
@@ -650,25 +840,24 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <h4 className="text-sm font-black uppercase tracking-widest text-black mb-4 border-b border-gray-100 pb-2">Products ({selectedOrder.order_items?.length || 0})</h4>
+                <h4 className="text-sm font-black uppercase tracking-widest text-black mb-4 border-b border-gray-200 pb-2">Products ({selectedOrder.order_items?.length || 0})</h4>
                 <div className="space-y-4">
                   {selectedOrder.order_items?.map((item: any) => (
-                    <div key={item.id} className="p-4 border border-gray-200 rounded-2xl flex gap-6 items-start bg-gray-50">
+                    <div key={item.id} className="p-4 border border-gray-300 rounded-2xl flex gap-6 items-start bg-gray-50 shadow-sm">
                       {item.custom_logo_url ? (
-                        <div className="relative w-20 h-20 bg-white rounded-xl border border-gray-200 p-1 flex-shrink-0 group">
+                        <div className="relative w-20 h-20 bg-white rounded-xl border border-gray-300 p-1 flex-shrink-0 group">
                           <img src={item.custom_logo_url} alt="Logo" className="w-full h-full object-contain" />
                           <a href={item.custom_logo_url} target="_blank" rel="noopener noreferrer" download={`logo-${item.product_id}`} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl" title="Download Logo"><Download size={20} className="text-white" /></a>
                         </div>
-                      ) : (<div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center flex-shrink-0 text-[9px] font-black text-gray-400 uppercase">No Logo</div>)}
+                      ) : (<div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center flex-shrink-0 text-[9px] font-black text-gray-500 uppercase border border-gray-300">No Logo</div>)}
                       <div className="flex-1">
                         <Link href={`/products/${item.product_id}`} target="_blank" className="text-sm font-black text-black uppercase tracking-tight hover:text-blue-600 hover:underline transition-colors block w-fit">{item.product_name}</Link>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
-                          <div><span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Size / Color:</span><p className="text-xs font-bold text-gray-800">{item.size} / {item.color}</p></div>
-                          <div><span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Qty & Price:</span><p className="text-xs font-bold text-gray-800">{item.quantity} x ${Number(item.unit_price).toFixed(2)}</p></div>
-                          <div><span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Decoration:</span><p className="text-xs font-bold text-gray-800">{item.decoration_method}</p></div>
-                          <div><span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Location:</span><p className="text-xs font-bold text-gray-800">{item.location}</p></div>
+                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Size / Color:</span><p className="text-xs font-bold text-gray-900">{item.size} / {item.color}</p></div>
+                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Qty & Price:</span><p className="text-xs font-bold text-gray-900">{item.quantity} x ${Number(item.unit_price).toFixed(2)}</p></div>
+                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Decoration:</span><p className="text-xs font-bold text-gray-900">{item.decoration_method}</p></div>
+                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Location:</span><p className="text-xs font-bold text-gray-900">{item.location}</p></div>
                         </div>
-                        {item.extra_comments && (<div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-lg"><p className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-1">Extra Comments / Instructions:</p><p className="text-xs font-medium text-amber-900 italic">"{item.extra_comments}"</p></div>)}
                       </div>
                     </div>
                   ))}
@@ -676,11 +865,11 @@ export default function AdminDashboard() {
               </div>
             </div>
             
-            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-              <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Total Paid</p><p className="text-2xl font-black text-black">${Number(selectedOrder.total_amount).toFixed(2)}</p></div>
+            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+              <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Total Paid</p><p className="text-2xl font-black text-black">${Number(selectedOrder.total_amount).toFixed(2)}</p></div>
               <div className="flex items-center gap-3">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Quick Status Update:</span>
-                <select value={selectedOrder.order_status} onChange={(e) => updateOrderStatus(selectedOrder.id, e.target.value)} className="px-4 py-3 bg-white border border-gray-200 rounded-xl text-xs font-bold uppercase tracking-widest outline-none focus:border-black cursor-pointer shadow-sm">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-600">Quick Status Update:</span>
+                <select value={selectedOrder.order_status} onChange={(e) => handleStatusChangeClick(selectedOrder, e.target.value)} className="px-4 py-3 bg-white border border-gray-300 rounded-xl text-xs font-bold uppercase tracking-widest text-black outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer shadow-sm hover:bg-gray-50 transition-all">
                   <option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="completed">Completed</option>
                 </select>
               </div>
@@ -689,26 +878,67 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* --- MODAL CREAR USUARIO --- */}
+      {/* MODAL USUARIO */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => setIsUserModalOpen(false)}>
           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="text-xl font-black uppercase tracking-tighter text-black">Create New User</h3><button onClick={() => setIsUserModalOpen(false)} className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors"><X size={20}/></button></div>
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50"><h3 className="text-xl font-black uppercase tracking-tighter text-black">Create New User</h3><button onClick={() => setIsUserModalOpen(false)} className="p-2 bg-white rounded-full text-gray-500 hover:text-black hover:bg-gray-200 transition-colors shadow-sm"><X size={20}/></button></div>
             <form onSubmit={handleCreateUser} className="p-8 space-y-6">
                <div className="grid grid-cols-2 gap-4">
-                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">First Name *</label><input type="text" required value={newUser.first_name} onChange={e => setNewUser({...newUser, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
-                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Last Name *</label><input type="text" required value={newUser.last_name} onChange={e => setNewUser({...newUser, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
+                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name *</label><input type="text" required value={newUser.first_name} onChange={e => setNewUser({...newUser, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name *</label><input type="text" required value={newUser.last_name} onChange={e => setNewUser({...newUser, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
                </div>
-               <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Email Address *</label><input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
+               <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address *</label><input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
                <div className="grid grid-cols-2 gap-4">
-                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Password *</label><input type="password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-black transition-colors"/></div>
-                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">User Role</label><select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-widest text-black outline-none focus:border-black transition-colors cursor-pointer"><option value="customer">Customer</option><option value="admin">Admin</option></select></div>
+                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Password *</label><input type="password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                 <div>
+                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">User Role</label>
+                   <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-widest text-black outline-none focus:border-black transition-colors cursor-pointer">
+                     <option value="customer">Customer</option><option value="admin">Admin</option>
+                   </select>
+                 </div>
                </div>
                <button type="submit" disabled={loading} className="w-full py-4 mt-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl disabled:opacity-50">{loading ? "Creating..." : "Save User"}</button>
             </form>
           </div>
         </div>
       )}
+
+      {/* 🚀 MODAL DE ADVERTENCIA PARA CAMBIO DE ESTADO MANUAL */}
+      {pendingStatusChange && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+              <AlertTriangle size={32} className="text-amber-500" />
+            </div>
+            <h3 className="text-xl font-black uppercase tracking-tighter text-black mb-2">Warning</h3>
+            <p className="text-[11px] font-bold text-gray-500 mb-8 uppercase tracking-widest leading-relaxed">
+              CHANGING THE STATUS TO <span className="text-black font-black">"{pendingStatusChange.newStatus}"</span> WILL AUTOMATICALLY SEND AN EMAIL NOTIFICATION TO THE CUSTOMER. DO YOU WANT TO PROCEED?
+            </p>
+            <div className="flex w-full gap-3">
+              <button 
+                onClick={cancelStatusChange} 
+                disabled={isStatusUpdating}
+                className="flex-1 py-4 bg-gray-100 text-gray-600 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                I Disagree
+              </button>
+              <button 
+                onClick={confirmStatusChange} 
+                disabled={isStatusUpdating}
+                className="flex-1 py-4 bg-black text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg disabled:opacity-50 flex justify-center items-center"
+              >
+                {isStatusUpdating ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  "I Agree"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

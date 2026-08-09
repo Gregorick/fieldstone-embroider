@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -9,16 +10,18 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function POST(req: Request) {
+export async function POST(req) {
   try {
     const body = await req.json();
-    const { orderId, weightOz, length, width, height } = body;
+    const { orderId, trackingUrl } = body;
 
-    if (!orderId) {
-      return NextResponse.json({ error: "No se envió ningún orderId a la API." }, { status: 400 });
+    if (!orderId || !trackingUrl) {
+      return NextResponse.json({ error: "No se envió orderId o trackingUrl." }, { status: 400 });
     }
 
+    // 1. Buscamos la orden en Supabase
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .select('*')
@@ -26,112 +29,79 @@ export async function POST(req: Request) {
       .single();
 
     if (orderError || !order) {
-      return NextResponse.json({ error: `Orden no encontrada en DB. Revisa que SUPABASE_SERVICE_ROLE_KEY esté en tu .env.local` }, { status: 404 });
+      return NextResponse.json({ error: `Orden no encontrada en la base de datos.` }, { status: 404 });
     }
 
-    // --- PARACAÍDAS DE DIRECCIÓN ---
-    // Si la orden de prueba no tiene datos, forzamos unos válidos para que UPS no la rechace.
-    const rawZip = order.shipping_zip || order.zip_code || "";
-    let cleanZip = rawZip.replace(/[^0-9]/g, '').substring(0, 5);
-    
-    // Si el código postal queda vacío o es menor a 5 dígitos, usamos uno real por defecto
-    if (!cleanZip || cleanZip.length < 5) {
-      cleanZip = "01515"; 
+    // 2. Actualizamos la Base de Datos (Cambiamos estado a Shipped y guardamos el link)
+    const { error: updateError } = await supabaseAdmin
+      .from('orders')
+      .update({
+        tracking_url: trackingUrl,
+        order_status: 'shipped'
+      })
+      .eq('id', orderId);
+
+    if (updateError) {
+      throw new Error(`Error actualizando Supabase: ${updateError.message}`);
     }
 
-    const shipmentPayload = {
-      shipment: {
-        to_address: {
-          name: (order.customer_name || "Valued Customer").substring(0, 35),
-          street1: (order.shipping_address || order.address || "109 DUNNBROOK RD").substring(0, 35),
-          city: (order.shipping_city || order.city || "EAST BROOKFIELD").substring(0, 30),
-          state: (order.shipping_state || order.state || "MA").substring(0, 2).toUpperCase(),
-          zip: cleanZip,
-          country: "US", // Asumimos envíos dentro de US por defecto
-          phone: "9999999999", 
-          email: order.customer_email || "test@test.com"
-        },
-        from_address: {
-          name: "DANIEL MARRA",
-          company: "FIELDSTONE EMBROIDERY LLC.",
-          street1: "104 KINGSTON ST",
-          city: "LAWRENCE",
-          state: "MA",
-          zip: "01843",
-          country: "US",
-          phone: "9782199071",
-          email: "ORDERS@FIELDSTONEEMBROIDERY.COM"
-        },
-        parcel: {
-          weight: Number(weightOz) || 16,
-          length: Number(length) || 10,
-          width: Number(width) || 10,
-          height: Number(height) || 2
-        }
+    // 3. Enviamos el Correo al Cliente usando RESEND
+    if (order.customer_email) {
+      const shortOrderId = orderId.split('-')[0].toUpperCase();
+      const clientName = order.customer_name || 'Valued Customer';
+
+      const emailResult = await resend.emails.send({
+        from: 'Fieldstone Embroidery <onboarding@resend.dev>', // O tu dominio verificado en Resend
+        to: order.customer_email,
+        subject: `Your Order #${shortOrderId} Has Shipped! 📦`,
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; color: #333; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+            <div style="background-color: #000; color: #fff; padding: 24px; text-align: center;">
+              <h1 style="margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;">Order Shipped</h1>
+            </div>
+            <div style="padding: 32px;">
+              <p style="font-size: 16px; margin-bottom: 20px; color: #111827;">Hi <strong>${clientName}</strong>,</p>
+              <p style="font-size: 16px; line-height: 1.6; color: #4b5563;">
+                Great news! Your custom order <strong>#${shortOrderId}</strong> has been prepared, packaged, and is now on its way to you.
+              </p>
+              
+              <div style="margin: 35px 0; text-align: center;">
+                <a href="${trackingUrl}" target="_blank" style="background-color: #3b5bdb; color: #ffffff; text-decoration: none; padding: 16px 32px; font-weight: 900; border-radius: 8px; display: inline-block; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                  Track Your Package
+                </a>
+              </div>
+              
+              <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #f3f4f6;">
+                <p style="font-size: 12px; color: #6b7280; margin-top: 0; margin-bottom: 8px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">Tracking Link (if button fails):</p>
+                <a href="${trackingUrl}" target="_blank" style="font-size: 13px; color: #3b5bdb; word-break: break-all;">${trackingUrl}</a>
+              </div>
+              
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
+              <p style="font-size: 13px; color: #9ca3af; text-align: center; margin: 0;">Thank you for choosing Fieldstone Embroidery!</p>
+            </div>
+          </div>
+        `,
+      });
+
+      if (emailResult.error) {
+        console.error("Resend Error al enviar tracking:", emailResult.error);
+        // Opcional: Registrar en Supabase si falla el correo
+        await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_tracking', payload: emailResult.error }]);
+      } else {
+        console.log(`✅ Correo de tracking enviado exitosamente a ${order.customer_email}`);
       }
-    };
-
-    const EASYPOST_API_KEY = (process.env.EASYPOST_API_KEY || "").trim();
-    if (!EASYPOST_API_KEY) throw new Error("EasyPost API Key is missing in .env");
-
-    const authHeader = `Basic ${Buffer.from(`${EASYPOST_API_KEY}:`).toString('base64')}`;
-
-    // 1. Crear Shipment
-    const createRes = await fetch('https://api.easypost.com/v2/shipments', {
-      method: 'POST',
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
-      body: JSON.stringify(shipmentPayload)
-    });
-
-    const shipment = await createRes.json();
-
-    if (shipment.error) {
-      const detailMsg = shipment.error.errors ? shipment.error.errors[0]?.message : shipment.error.message;
-      return NextResponse.json({ error: `Rechazado por EasyPost: ${detailMsg}` }, { status: 400 });
+    } else {
+      console.log("⚠️ Correo omitido: La orden no tiene email registrado.");
     }
 
-    // VALIDACIÓN ESTRICTA: ¿Por qué UPS nos rechazó?
-    if (!shipment.rates || shipment.rates.length === 0) {
-      // Extraemos el mensaje exacto de la empresa de transporte
-      const carrierMessages = shipment.messages ? shipment.messages.map((m: any) => m.message).join(" | ") : "Dirección inválida o fuera de zona.";
-      return NextResponse.json({ error: `UPS/USPS se negaron a procesar esta dirección. Motivo: ${carrierMessages}` }, { status: 400 });
-    }
-
-    // 2. Comprar la Etiqueta (Priorizamos UPS, si no hay, agarramos la que EasyPost nos dé)
-    const upsRate = shipment.rates.find((r: any) => r.carrier === "UPS" || r.carrier === "UPSDAP") || shipment.rates[0];
-    
-    const buyRes = await fetch(`https://api.easypost.com/v2/shipments/${shipment.id}/buy`, {
-      method: 'POST',
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rate: { id: upsRate.id } })
-    });
-
-    const boughtShipment = await buyRes.json();
-    if (boughtShipment.error) throw new Error(boughtShipment.error.message);
-
-    // 3. Crear el Link de Tracking de UPS Directo
-    let trackingLink = boughtShipment.tracker.public_url;
-    if (upsRate.carrier === "UPS" || upsRate.carrier === "UPSDAP") {
-      trackingLink = `https://www.ups.com/track?loc=en_US&tracknum=${boughtShipment.tracking_code}`;
-    }
-
-    // 4. Actualizar Base de Datos
-    await supabaseAdmin.from('orders').update({
-      tracking_number: boughtShipment.tracking_code,
-      shipping_label_url: boughtShipment.postage_label.label_url,
-      tracking_url: trackingLink,
-      order_status: 'shipped'
-    }).eq('id', orderId);
-
+    // Retornamos éxito al frontend
     return NextResponse.json({ 
       success: true, 
-      trackingNumber: boughtShipment.tracking_code,
-      labelUrl: boughtShipment.postage_label.label_url,
-      trackingUrl: trackingLink
+      trackingUrl: trackingUrl
     });
 
-  } catch (error: any) {
-    console.error("Shipping API Error:", error);
+  } catch (error) {
+    console.error("Shipping Tracking Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

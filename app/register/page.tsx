@@ -71,37 +71,41 @@ export default function RegisterPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name</label>
+                {/* Agregado text-black, font-medium y border-gray-300 para alto contraste */}
                 <input 
                   type="text" required
                   value={formData.firstName} onChange={(e) => setFormData({...formData, firstName: e.target.value})}
-                  className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:bg-white transition-colors"
+                  className="w-full bg-gray-50 border border-gray-300 text-black font-medium placeholder-gray-500 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black focus:bg-white transition-colors"
                 />
               </div>
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name</label>
+                {/* Agregado text-black, font-medium y border-gray-300 para alto contraste */}
                 <input 
                   type="text" required
                   value={formData.lastName} onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-                  className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:bg-white transition-colors"
+                  className="w-full bg-gray-50 border border-gray-300 text-black font-medium placeholder-gray-500 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black focus:bg-white transition-colors"
                 />
               </div>
             </div>
             
             <div>
               <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label>
+              {/* Agregado text-black, font-medium y border-gray-300 para alto contraste */}
               <input 
                 type="email" required
                 value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})}
-                className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:bg-white transition-colors"
+                className="w-full bg-gray-50 border border-gray-300 text-black font-medium placeholder-gray-500 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black focus:bg-white transition-colors"
               />
             </div>
 
             <div>
               <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Password</label>
+              {/* Agregado text-black, font-medium y border-gray-300 para alto contraste */}
               <input 
                 type="password" required minLength={6}
                 value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:bg-white transition-colors"
+                className="w-full bg-gray-50 border border-gray-300 text-black font-medium placeholder-gray-500 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black focus:bg-white transition-colors"
               />
             </div>
 

@@ -9,15 +9,12 @@ import Footer from "../../components/Footer";
 import { useCart } from "../../context/CartContext";
 import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus } from "lucide-react";
 
-// Importación estática de la imagen original
 import sizeChartImg from "@/public/Size_chart.webp";
 
-// IMPORTACIONES DE LAS GUÍAS DE COLOCACIÓN
 import placement1 from "@/public/PLACEMENT-GUIDE_Pagina_1.jpg";
 import placement2 from "@/public/PLACEMENT-GUIDE_Pagina_2.jpg";
 import placement3 from "@/public/PLACEMENT-GUIDE_Pagina_3.jpg";
 
-// ✅ LISTA PARA MAPEAR GRUPOS DE COLORES A NOMBRES REALES DE LA BD
 const MAIN_COLORS = [
   { name: "Blacks", base: "black" }, { name: "Whites", base: "white" },
   { name: "Grays", base: "gray" }, { name: "Blues", base: "blue" },
@@ -28,10 +25,8 @@ const MAIN_COLORS = [
   { name: "Charcoals", base: "charcoal" }, { name: "Beiges", base: "beige" }
 ];
 
-// Orden lógico para las tallas
 const SIZE_ORDER: Record<string, number> = { "XXS": 0, "XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5, "2XL": 6, "3XL": 7, "4XL": 8, "5XL": 9, "6XL": 10 };
 
-// Tiers por defecto (Fallback si la DB falla)
 const DEFAULT_DECORATION_TIERS = [
   { min: 1, max: 11, emb: 12.45, sp: 8.00, dtf: 10.50 },
   { min: 12, max: 23, emb: 10.45, sp: 7.00, dtf: 9.45 },
@@ -42,7 +37,7 @@ const DEFAULT_DECORATION_TIERS = [
 ];
 
 function ProductPageContent() {
-  const { slug } = useParams(); // 🚀 Ahora leemos el slug de la URL
+  const { slug } = useParams();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -53,11 +48,9 @@ function ProductPageContent() {
   const [loading, setLoading] = useState(true);
   const [uploadedLogo, setUploadedLogo] = useState<string | null>(null);
 
-  // Referencia y estado para el modal de advertencia legal
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLegalWarningOpen, setIsLegalWarningOpen] = useState(false);
 
-  // Estados de Selección
   const [quantity, setQuantity] = useState<number>(1);
   const [decorationMethod, setDecorationMethod] = useState<"emb" | "sp" | "">("");
   
@@ -109,7 +102,6 @@ function ProductPageContent() {
         if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
       }
 
-      // 🚀 BUSGAMOS EL PRODUCTO USANDO EL SLUG
       const { data: productData } = await supabase
         .from("products_unique_styles")
         .select("*")
@@ -215,10 +207,8 @@ function ProductPageContent() {
     localStorage.removeItem("user_custom_logo");
   };
 
-  // Función para manejar la aceptación del modal
   const handleAcceptLegalWarning = () => {
     setIsLegalWarningOpen(false);
-    // Programáticamente hacemos clic en el input de archivo oculto
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
@@ -244,7 +234,8 @@ function ProductPageContent() {
     availableLocations = ["Standard Location"];
   }
 
-  const currentTier = decorationTiers.find(t => quantity >= t.min && quantity <= t.max) || decorationTiers[decorationTiers.length - 1];
+  // 🚀 Cálculo dinámico utilizando los rangos (min y max) guardados en la BD por el admin
+  const currentTier = decorationTiers.find(t => quantity >= Number(t.min) && quantity <= Number(t.max)) || decorationTiers[decorationTiers.length - 1];
   const addedPrice = decorationMethod ? currentTier[decorationMethod as "emb" | "sp"] : 0;
   const unitPrice = basePrice + addedPrice;
   const totalSubtotal = unitPrice * quantity;
@@ -414,7 +405,6 @@ function ProductPageContent() {
               <div className="mb-10 w-full border-2 border-dashed border-gray-300 rounded-3xl p-8 flex flex-col items-center justify-center bg-gray-50 transition-all relative animate-in fade-in">
                 <button onClick={() => setIsPlacementGuideOpen(true)} className="text-blue-600 hover:text-blue-800 font-bold mb-4 text-sm underline transition-colors cursor-pointer">Placement Guide</button>
                 
-                {/* Input oculto para manejar la subida del archivo */}
                 <input 
                   type="file" 
                   ref={fileInputRef}
@@ -470,7 +460,6 @@ function ProductPageContent() {
               </div>
             )}
 
-            {/* ✅ SOLO ALERTA DE SMALL ORDER FEE (Tabla de precios B2B Oculta) */}
             {totalSubtotal < feeThreshold && quantity < 500 && (
               <div className="mb-10 p-5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
                 <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
@@ -481,7 +470,6 @@ function ProductPageContent() {
               </div>
             )}
 
-            {/* CANTIDAD Y AÑADIR AL CARRITO */}
             <div className="flex items-end gap-6 mb-10 pb-10 border-b border-gray-100">
               <div className="flex flex-col">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Quantity</label>
@@ -498,7 +486,6 @@ function ProductPageContent() {
               </div>
             </div>
 
-            {/* ACCORDIONS */}
             <div className="space-y-3">
               {DISCLOSURES.map((disc) => (
                 <div key={disc.id} className="border border-gray-200 rounded-2xl overflow-hidden">
@@ -515,7 +502,7 @@ function ProductPageContent() {
       </div>
       <Footer />
 
-      {/* MODAL: ADVERTENCIA LEGAL */}
+      {/* MODAL ADVERTENCIA */}
       {isLegalWarningOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
@@ -544,7 +531,6 @@ function ProductPageContent() {
         </div>
       )}
 
-      {/* OTROS MODALES */}
       {validationError && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
@@ -570,16 +556,13 @@ function ProductPageContent() {
             <button onClick={() => setIsPlacementGuideOpen(false)} className="absolute -top-4 -right-4 bg-black text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform z-10"><X size={20} /></button>
             
             <div className="h-[80vh] overflow-y-auto custom-scrollbar p-4 space-y-6">
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <img src={placement1.src} alt="Placement Guide Page 1" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
                 <img src={placement2.src} alt="Placement Guide Page 2" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
               </div>
-              
               <div className="w-full flex justify-center">
                 <img src={placement3.src} alt="Placement Guide Page 3 - Bags" className="w-full max-w-4xl h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
               </div>
-              
             </div>
           </div>
         </div>

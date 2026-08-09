@@ -66,10 +66,11 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label>
+              {/* Agregado text-black, font-medium y border-gray-300 para alto contraste */}
               <input 
                 type="email" required
                 value={email} onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:bg-white transition-colors"
+                className="w-full bg-gray-50 border border-gray-300 text-black font-medium placeholder-gray-500 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black focus:bg-white transition-colors"
               />
             </div>
 
@@ -78,10 +79,11 @@ export default function LoginPage() {
                 <label className="text-[9px] font-black uppercase tracking-widest text-gray-500">Password</label>
                 <Link href="#" className="text-[10px] font-bold text-gray-400 hover:text-black">Forgot Password?</Link>
               </div>
+              {/* Agregado text-black, font-medium y border-gray-300 para alto contraste */}
               <input 
                 type="password" required
                 value={password} onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:bg-white transition-colors"
+                className="w-full bg-gray-50 border border-gray-300 text-black font-medium placeholder-gray-500 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black focus:bg-white transition-colors"
               />
             </div>
 

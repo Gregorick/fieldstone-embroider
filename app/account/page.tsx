@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { User, MapPin, Package, LogOut, Camera, Save, Plus, Trash2, X, AlertTriangle, Star } from "lucide-react";
+import { 
+  User, MapPin, Package, LogOut, Camera, Save, 
+  Plus, Trash2, X, AlertTriangle, Star, Truck, 
+  ChevronLeft, ChevronRight 
+} from "lucide-react";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -31,6 +35,10 @@ export default function AccountPage() {
 
   // Estado para almacenar las órdenes
   const [orders, setOrders] = useState<any[]>([]);
+  
+  // 🚀 ESTADOS PARA LA PAGINACIÓN DE ÓRDENES
+  const [currentPage, setCurrentPage] = useState(1);
+  const ordersPerPage = 10;
   
   // Estado para el Lightbox del logo
   const [selectedLogoUrl, setSelectedLogoUrl] = useState<string | null>(null);
@@ -70,7 +78,6 @@ export default function AccountPage() {
     getInitialData();
   }, [router]);
 
-  // 🔥 Modificado para ordenar por la predeterminada primero
   const fetchAddresses = async (userId: string) => {
     const { data } = await supabase
       .from("addresses")
@@ -91,6 +98,13 @@ export default function AccountPage() {
       
     if (data) setOrders(data);
   };
+
+  // 🚀 LÓGICA DE PAGINACIÓN CALCULADA
+  const totalPages = Math.ceil(orders.length / ordersPerPage) || 1;
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * ordersPerPage;
+    return orders.slice(start, start + ordersPerPage);
+  }, [orders, currentPage]);
 
   const updateProfile = async () => {
     setLoading(true);
@@ -130,7 +144,6 @@ export default function AccountPage() {
         return; 
       }
 
-      // Si es la primera dirección que agrega, la hacemos predeterminada automáticamente
       const isFirstAddress = addresses.length === 0;
 
       const { error } = await supabase.from("addresses").insert([{ 
@@ -154,23 +167,19 @@ export default function AccountPage() {
     setLoading(false);
   };
 
-  // 🔥 NUEVO: Función para establecer como predeterminada
   const setAsDefault = async (addressId: string) => {
     setLoading(true);
     
-    // 1. Quitar el estado de 'default' a todas las direcciones de este usuario
     await supabase
       .from("addresses")
       .update({ is_default: false })
       .eq("user_id", user.id);
 
-    // 2. Establecer la nueva dirección como 'default'
     await supabase
       .from("addresses")
       .update({ is_default: true })
       .eq("id", addressId);
 
-    // Recargar la lista
     fetchAddresses(user.id);
     setLoading(false);
   };
@@ -294,15 +303,15 @@ export default function AccountPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">First Name</label>
-                    <input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full text-gray-400 bg-gray-50 border border-transparent rounded-2xl px-6 py-4 text-sm outline-none focus:border-black focus:bg-white transition-all"/>
+                    <input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-2xl px-6 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
                   </div>
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Last Name</label>
-                    <input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full text-gray-400 bg-gray-50 border border-transparent rounded-2xl px-6 py-4 text-sm outline-none focus:border-black focus:bg-white transition-all"/>
+                    <input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-2xl px-6 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Email Address (Login)</label>
-                    <input type="email" disabled value={user?.email} className="w-full bg-gray-100 border border-transparent rounded-2xl px-6 py-4 text-sm text-gray-400 outline-none cursor-not-allowed"/>
+                    <input type="email" disabled value={user?.email} className="w-full bg-gray-100 border border-gray-200 rounded-2xl px-6 py-4 text-sm text-gray-500 outline-none cursor-not-allowed"/>
                   </div>
                 </div>
                 <button onClick={updateProfile} className="mt-8 flex items-center gap-3 px-10 py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-2xl">
@@ -324,7 +333,7 @@ export default function AccountPage() {
                 </div>
 
                 {isAddingAddress ? (
-                  <form onSubmit={saveAddress} className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100 mb-8 animate-in fade-in zoom-in-95">
+                  <form onSubmit={saveAddress} className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-200 mb-8 animate-in fade-in zoom-in-95 shadow-sm">
                     <div className="flex justify-between items-center mb-6">
                       <h4 className="text-lg font-black uppercase tracking-tight text-gray-400">New Address</h4>
                       <button type="button" onClick={() => setIsAddingAddress(false)} className="text-gray-400 hover:text-black"><X size={20}/></button>
@@ -343,13 +352,13 @@ export default function AccountPage() {
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <input type="text" required placeholder="First Name" value={newAddress.first_name} onChange={e => setNewAddress({...newAddress, first_name: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="Last Name" value={newAddress.last_name} onChange={e => setNewAddress({...newAddress, last_name: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="Street Address" value={newAddress.street} onChange={e => setNewAddress({...newAddress, street: e.target.value})} className="md:col-span-2 w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="City" value={newAddress.city} onChange={e => setNewAddress({...newAddress, city: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="State (e.g., MA)" value={newAddress.state} onChange={e => setNewAddress({...newAddress, state: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="text" required placeholder="ZIP Code" value={newAddress.zip} onChange={e => setNewAddress({...newAddress, zip: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
-                      <input type="tel" required placeholder="Phone Number" value={newAddress.phone} onChange={e => setNewAddress({...newAddress, phone: e.target.value})} className="w-full text-gray-800 bg-white border border-transparent rounded-xl px-4 py-3 text-sm outline-none focus:border-black transition-all"/>
+                      <input type="text" required placeholder="First Name" value={newAddress.first_name} onChange={e => setNewAddress({...newAddress, first_name: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
+                      <input type="text" required placeholder="Last Name" value={newAddress.last_name} onChange={e => setNewAddress({...newAddress, last_name: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
+                      <input type="text" required placeholder="Street Address" value={newAddress.street} onChange={e => setNewAddress({...newAddress, street: e.target.value})} className="md:col-span-2 w-full text-black font-medium bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
+                      <input type="text" required placeholder="City" value={newAddress.city} onChange={e => setNewAddress({...newAddress, city: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
+                      <input type="text" required placeholder="State (e.g., MA)" value={newAddress.state} onChange={e => setNewAddress({...newAddress, state: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
+                      <input type="text" required placeholder="ZIP Code" value={newAddress.zip} onChange={e => setNewAddress({...newAddress, zip: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
+                      <input type="tel" required placeholder="Phone Number" value={newAddress.phone} onChange={e => setNewAddress({...newAddress, phone: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
                     </div>
                     
                     <button type="submit" disabled={loading} className="mt-6 w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors disabled:bg-gray-400 flex items-center justify-center gap-2">
@@ -358,13 +367,12 @@ export default function AccountPage() {
                     </button>
                   </form>
                 ) : addresses.length === 0 ? (
-                  <div className="p-20 text-center bg-gray-50 rounded-[3rem] border border-dashed border-gray-200">
+                  <div className="p-20 text-center bg-gray-50 rounded-[3rem] border border-dashed border-gray-300">
                     <MapPin size={48} className="text-gray-300 mx-auto mb-4" />
                     <p className="text-sm font-bold text-gray-500 uppercase tracking-tight">No addresses saved yet.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* 🔥 Tarjetas de Direcciones Modificadas */}
                     {addresses.map((addr) => (
                       <div key={addr.id} className={`p-6 border ${addr.is_default ? 'border-black shadow-md bg-gray-50' : 'border-gray-200 bg-white'} rounded-[2rem] relative group hover:border-black transition-colors flex flex-col justify-between`}>
                         
@@ -397,7 +405,7 @@ export default function AccountPage() {
                             <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Primary Address</span>
                           )}
 
-                          <button onClick={() => deleteAddress(addr.id)} className="text-gray-400 hover:text-red-500 transition-colors bg-white hover:bg-red-50 rounded-full p-2" title="Delete Address">
+                          <button onClick={() => deleteAddress(addr.id)} className="text-gray-400 hover:text-red-500 transition-colors bg-white border border-gray-200 hover:bg-red-50 hover:border-red-200 rounded-full p-2 shadow-sm" title="Delete Address">
                             <Trash2 size={16} />
                           </button>
                         </div>
@@ -414,59 +422,85 @@ export default function AccountPage() {
                 <h3 className="text-3xl font-black uppercase tracking-tighter text-black italic mb-8">Recent Orders</h3>
                 
                 {orders.length === 0 ? (
-                  <div className="p-20 text-center bg-gray-50 rounded-[3rem] border border-dashed border-gray-200">
+                  <div className="p-20 text-center bg-gray-50 rounded-[3rem] border border-dashed border-gray-300">
                     <Package size={48} className="text-gray-300 mx-auto mb-4" />
                     <p className="text-sm font-bold text-gray-500 uppercase tracking-tight">You haven't placed any orders yet.</p>
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {orders.map((order) => (
-                      <div key={order.id} className="border border-gray-100 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition-all bg-white">
+                    {/* 🚀 USAMOS LA LISTA PAGINADA (paginatedOrders) */}
+                    {paginatedOrders.map((order) => (
+                      <div key={order.id} className="border border-gray-200 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition-all bg-white">
                         
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6 pb-6 border-b border-gray-100">
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Order ID</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Order ID</p>
                             <p className="text-xs font-black text-black uppercase">#{order.id.split('-')[0]}</p>
                           </div>
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Trans. ID</p>
-                            <p className="text-xs font-bold text-gray-500 uppercase">{order.payment_id || "Procesando..."}</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Trans. ID</p>
+                            <p className="text-xs font-bold text-gray-600 uppercase">{order.payment_id || "Procesando..."}</p>
                           </div>
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Date</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Date</p>
                             <p className="text-xs font-bold text-black">{new Date(order.created_at).toLocaleDateString()}</p>
                           </div>
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Status</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Status</p>
                             <span className={`inline-block px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${
-                              order.order_status === 'processing' ? 'bg-blue-50 text-blue-600' : 
-                              order.order_status === 'shipped' ? 'bg-amber-50 text-amber-600' : 
-                              order.order_status === 'delivered' ? 'bg-green-50 text-green-600' : 
-                              'bg-gray-100 text-gray-600'
+                              order.order_status === 'processing' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 
+                              order.order_status === 'shipped' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 
+                              order.order_status === 'delivered' ? 'bg-green-50 text-green-600 border border-green-100' : 
+                              'bg-gray-100 text-gray-600 border border-gray-200'
                             }`}>
                               {order.order_status}
                             </span>
                           </div>
                           <div className="md:text-right">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Total</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Total</p>
                             <p className="text-sm font-black text-black">${Number(order.total_amount).toFixed(2)}</p>
                           </div>
                         </div>
+
+                        {/* 🚀 NUEVA SECCIÓN DE TRACKING PARA EL CLIENTE */}
+                        {order.tracking_url && (
+                          <div className="mb-6 p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                             <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shadow-sm flex-shrink-0">
+                                  <Truck size={18} />
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-0.5">Your package has shipped!</p>
+                                  <p className="text-xs font-bold text-blue-600/80 hover:text-blue-600 truncate max-w-[200px] sm:max-w-xs transition-colors">
+                                    <a href={order.tracking_url} target="_blank" rel="noreferrer">{order.tracking_url}</a>
+                                  </p>
+                                </div>
+                             </div>
+                             <a 
+                               href={order.tracking_url} 
+                               target="_blank" 
+                               rel="noreferrer" 
+                               className="px-6 py-3 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-700 transition-colors shadow-md text-center sm:w-auto w-full"
+                             >
+                                Track Package
+                             </a>
+                          </div>
+                        )}
                         
                         <div className="space-y-4">
                           {order.order_items && order.order_items.map((item: any) => (
-                            <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50 p-4 rounded-xl">
-                              <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-100 flex-shrink-0">
-                                <Package size={20} className="text-gray-300" />
+                            <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                              <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-200 flex-shrink-0 shadow-sm">
+                                <Package size={20} className="text-gray-400" />
                               </div>
                               <div className="flex-1">
                                 <Link 
                                   href={`/products/${item.product_id}`} 
-                                  className="text-xs font-bold text-black uppercase tracking-tight hover:underline hover:text-blue-600 transition-all block w-fit"
+                                  className="text-xs font-black text-black uppercase tracking-tight hover:underline hover:text-blue-600 transition-all block w-fit"
                                 >
                                   {item.product_name}
                                 </Link>
-                                <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">
+                                <p className="text-[10px] font-bold text-gray-600 uppercase mt-1">
                                   {item.size} • {item.color} • {item.decoration_method} • {item.location}
                                 </p>
                               </div>
@@ -475,7 +509,7 @@ export default function AccountPage() {
                                 {item.custom_logo_url && (
                                   <button 
                                     onClick={() => setSelectedLogoUrl(item.custom_logo_url)}
-                                    className="w-10 h-10 bg-white border border-gray-200 rounded-md overflow-hidden hover:border-black transition-colors shadow-sm flex-shrink-0"
+                                    className="w-10 h-10 bg-white border border-gray-300 rounded-md overflow-hidden hover:border-black transition-colors shadow-sm flex-shrink-0"
                                     title="View Uploaded Logo"
                                   >
                                     <img 
@@ -488,7 +522,7 @@ export default function AccountPage() {
 
                                 <div className="text-right min-w-[60px]">
                                   <p className="text-xs font-black text-black">Qty: {item.quantity}</p>
-                                  <p className="text-[10px] font-bold text-gray-500 mt-1">${Number(item.unit_price).toFixed(2)} ea.</p>
+                                  <p className="text-[10px] font-bold text-gray-600 mt-1">${Number(item.unit_price).toFixed(2)} ea.</p>
                                 </div>
                               </div>
                             </div>
@@ -497,6 +531,37 @@ export default function AccountPage() {
                         
                       </div>
                     ))}
+
+                    {/* 🚀 CONTROLES DE PAGINACIÓN */}
+                    {orders.length > 0 && (
+                      <div className="flex items-center justify-between pt-6 mt-6 border-t border-gray-200">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          Showing <span className="text-black font-black">{((currentPage - 1) * ordersPerPage) + 1}</span> to <span className="text-black font-black">{Math.min(currentPage * ordersPerPage, orders.length)}</span> of <span className="text-black font-black">{orders.length}</span> orders
+                        </p>
+                        
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          
+                          <span className="text-xs font-black uppercase tracking-widest px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl shadow-sm text-black">
+                            Page {currentPage} of {totalPages}
+                          </span>
+
+                          <button 
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
