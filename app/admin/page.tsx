@@ -37,14 +37,12 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState(""); 
   
   const [unseenOrders, setUnseenOrders] = useState<any[]>([]);
-  
   const [currentPage, setCurrentPage] = useState(1);
   const ordersPerPage = 10;
   
   const [trackingUrlInput, setTrackingUrlInput] = useState("");
   const [isSendingTracking, setIsSendingTracking] = useState(false);
 
-  // ESTADOS PARA EL MODAL DE CONFIRMACIÓN DE STATUS
   const [pendingStatusChange, setPendingStatusChange] = useState<{order: any, newStatus: string} | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
@@ -97,13 +95,30 @@ export default function AdminDashboard() {
     setLoading(false);
   }
 
+  // 🚀 ACTUALIZADO: Consultamos las órdenes a nuestra nueva API Admin
   const fetchOrders = async () => {
-    const { data } = await supabase.from("orders").select(`*, order_items (*)`).order("created_at", { ascending: false });
-    if (data) {
-      setOrders(data);
-      const viewedIds = JSON.parse(localStorage.getItem("viewed_order_ids") || "[]");
-      const freshOrders = data.filter(o => !viewedIds.includes(o.id));
-      setUnseenOrders(freshOrders);
+    try {
+      const res = await fetch('/fieldstone-embroider/api/admin-data?type=orders');
+      const { data } = await res.json();
+      if (data) {
+        setOrders(data);
+        const viewedIds = JSON.parse(localStorage.getItem("viewed_order_ids") || "[]");
+        const freshOrders = data.filter((o: any) => !viewedIds.includes(o.id));
+        setUnseenOrders(freshOrders);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // 🚀 ACTUALIZADO: Consultamos a los usuarios a nuestra nueva API Admin
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/fieldstone-embroider/api/admin-data?type=users');
+      const { data } = await res.json();
+      if (data) setUsersList(data);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -123,21 +138,31 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🚀 ACTUALIZADO: Enviamos el cambio de estado a la nueva API
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
-    const { error } = await supabase.from("orders").update({ order_status: newStatus }).eq("id", orderId);
-    if (!error) {
-      setOrders(orders.map(o => o.id === orderId ? { ...o, order_status: newStatus } : o));
-      if (selectedOrder && selectedOrder.id === orderId) setSelectedOrder({ ...selectedOrder, order_status: newStatus });
-    } else alert("Error updating order: " + error.message);
+    try {
+      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_order', payload: { orderId, status: newStatus } })
+      });
+      const { success, error } = await res.json();
+      
+      if (success) {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, order_status: newStatus } : o));
+        if (selectedOrder && selectedOrder.id === orderId) setSelectedOrder((prev: any) => ({ ...prev, order_status: newStatus }));
+      } else {
+        alert("Error updating order: " + error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  // 🚀 LÓGICA DE INTERCEPCIÓN DEL SELECT STATUS
   const handleStatusChangeClick = (order: any, newStatus: string) => {
-    // Si elige shipped, delivered o completed, abrimos el warning
     if (['shipped', 'delivered', 'completed'].includes(newStatus)) {
       setPendingStatusChange({ order, newStatus });
     } else {
-      // Si vuelve a processing u otro estado interno, lo cambiamos sin alertar (ni enviar correo)
       updateOrderStatus(order.id, newStatus);
     }
   };
@@ -147,11 +172,8 @@ export default function AdminDashboard() {
     setIsStatusUpdating(true);
     
     const { order, newStatus } = pendingStatusChange;
-    
-    // 1. Actualizamos en base de datos
     await updateOrderStatus(order.id, newStatus);
 
-    // 2. Simulamos/Disparamos el envío de correo (Se enviaría a un endpoint tuyo, ej: /api/notify-status)
     try {
       await fetch('/fieldstone-embroider/api/notify-status', {
         method: 'POST',
@@ -160,7 +182,8 @@ export default function AdminDashboard() {
           orderId: order.id, 
           status: newStatus,
           email: order.customer_email,
-          name: order.customer_name
+          name: order.customer_name,
+          trackingUrl: order.tracking_url
         })
       });
     } catch (err) {
@@ -172,7 +195,6 @@ export default function AdminDashboard() {
   };
 
   const cancelStatusChange = () => {
-    // Al setear en null sin actualizar la base de datos, el select vuelve automáticamente a su valor original
     setPendingStatusChange(null);
   };
 
@@ -248,26 +270,59 @@ export default function AdminDashboard() {
     setCurrentPage(1);
   }, [searchQuery]);
 
-  const fetchUsers = async () => { const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }); if (data) setUsersList(data); };
-  
+  // 🚀 ACTUALIZADO: Envía a la API centralizada
   const updateUserRole = async (userId: string, newRole: string) => {
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
-    if (!error) setUsersList(usersList.map(u => u.id === userId ? { ...u, role: newRole } : u)); else alert("Error: " + error.message);
+    try {
+      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_role', payload: { userId, role: newRole } })
+      });
+      const { success, error } = await res.json();
+      if (success) {
+        setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      } else alert("Error: " + error);
+    } catch (err) { console.error(err); }
   };
   
+  // 🚀 ACTUALIZADO: Envía a la API centralizada
   const deleteUser = async (userId: string) => {
     if (!confirm("Delete this user?")) return;
-    const { error } = await supabase.from('profiles').delete().eq('id', userId);
-    if (!error) setUsersList(usersList.filter(u => u.id !== userId)); else alert("Error: " + error.message);
+    try {
+      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_user', payload: { userId } })
+      });
+      const { success, error } = await res.json();
+      if (success) {
+        setUsersList(prev => prev.filter(u => u.id !== userId));
+      } else alert("Error: " + error);
+    } catch (err) { console.error(err); }
   };
   
+  // 🚀 ACTUALIZADO: Crea el usuario en Supabase Auth y en Profiles desde la API Centralizada
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
-      const { error } = await supabase.from('profiles').insert([{ id: "user-" + Date.now(), ...newUser }]);
-      if (error) throw error;
-      alert("User added!"); setIsUserModalOpen(false); setNewUser({ first_name: "", last_name: "", email: "", password: "", role: "customer" }); fetchUsers();
-    } catch (err: any) { alert("Error: " + err.message); } finally { setLoading(false); }
+      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_user', payload: newUser })
+      });
+      const { success, error } = await res.json();
+      
+      if (!success) throw new Error(error);
+      
+      alert("User successfully added and registered in Auth!"); 
+      setIsUserModalOpen(false); 
+      setNewUser({ first_name: "", last_name: "", email: "", password: "", role: "customer" }); 
+      fetchUsers();
+    } catch (err: any) { 
+      alert("Error: " + err.message); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const toggleCategoryVisibility = (cat: string) => setVisibleCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);

@@ -12,7 +12,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function POST(req) {
+// ✅ Le agregamos ": Request" porque es un archivo .ts
+export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { orderId, trackingUrl } = body;
@@ -51,7 +52,7 @@ export async function POST(req) {
       const clientName = order.customer_name || 'Valued Customer';
 
       const emailResult = await resend.emails.send({
-        from: 'Fieldstone Embroidery <onboarding@resend.dev>', // O tu dominio verificado en Resend
+        from: 'Fieldstone Embroidery <onboarding@resend.dev>', // En producción cambia onboarding@resend.dev por tu dominio verificado
         to: order.customer_email,
         subject: `Your Order #${shortOrderId} Has Shipped! 📦`,
         html: `
@@ -85,7 +86,6 @@ export async function POST(req) {
 
       if (emailResult.error) {
         console.error("Resend Error al enviar tracking:", emailResult.error);
-        // Opcional: Registrar en Supabase si falla el correo
         await supabaseAdmin.from('webhook_logs').insert([{ source: 'error_resend_tracking', payload: emailResult.error }]);
       } else {
         console.log(`✅ Correo de tracking enviado exitosamente a ${order.customer_email}`);
@@ -94,13 +94,13 @@ export async function POST(req) {
       console.log("⚠️ Correo omitido: La orden no tiene email registrado.");
     }
 
-    // Retornamos éxito al frontend
     return NextResponse.json({ 
       success: true, 
       trackingUrl: trackingUrl
     });
 
-  } catch (error) {
+  // ✅ Le agregamos ": any" al error de la excepción
+  } catch (error: any) {
     console.error("Shipping Tracking Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

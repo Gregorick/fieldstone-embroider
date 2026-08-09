@@ -4,7 +4,7 @@ import { Resend } from 'resend';
 // Inicializamos Resend con la variable de entorno
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function POST(req: Request) {
+export async function POST(req) {
   try {
     // 👈 Recibimos el trackingUrl desde el frontend
     const { orderId, status, email, name, trackingUrl } = await req.json();
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: "Notification email sent successfully." });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("Status Notify API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
