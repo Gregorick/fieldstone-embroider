@@ -56,9 +56,10 @@ export async function POST(req) {
       </div>
     ` : ''; // Si no hay trackingUrl, se queda en blanco
 
-    // Enviamos el correo con Resend utilizando el diseño limpio del sistema
+    // Enviamos el correo con Resend utilizando tu dominio oficial
     const emailResult = await resend.emails.send({
-      from: 'Fieldstone Embroidery <onboarding@resend.dev>', // En producción cambia onboarding@resend.dev por tu dominio verificado
+      from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>', // 👈 Dominio oficial verificado
+      reply_to: 'gregorick.liriano@gmail.com',                       // 👈 Aquí llegan las respuestas de los clientes
       to: email,
       subject: subject,
       html: `
