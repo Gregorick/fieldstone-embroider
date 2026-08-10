@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const recentlyProcessedOrders = new Set<string>();
 
-export async function POST(req) {
+export async function POST(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -56,7 +56,7 @@ export async function POST(req) {
             let supabaseOrderId = orderData.note || orderData.externalReferenceId || orderData.title || orderData.referenceId; 
             let clientEmailAddress = 'gregorick.liriano@gmail.com'; 
             let clientName = 'Cliente';
-            let dbItems = [];
+            let dbItems: any[] = [];
             let totalToDisplay = orderData.total ? (Number(orderData.total) / 100).toFixed(2) : "0.00";
             let dbOrder = null;
 
@@ -76,7 +76,7 @@ export async function POST(req) {
                 // 2. Buscar por Payment ID
                 const possibleIds = [orderId];
                 if (orderData.payments?.elements) {
-                    orderData.payments.elements.forEach((p) => possibleIds.push(p.id));
+                    orderData.payments.elements.forEach((p: any) => possibleIds.push(p.id));
                 }
                 const { data: payData } = await supabaseAdmin.from('orders').select('*').in('payment_id', possibleIds);
                 if (payData && payData.length > 0) {
@@ -94,7 +94,7 @@ export async function POST(req) {
                     .limit(15);
                     
                   if (recentOrders) {
-                    const matchedOrder = recentOrders.find((o) => Number(o.total_amount).toFixed(2) === exactTotal);
+                    const matchedOrder = recentOrders.find((o: any) => Number(o.total_amount).toFixed(2) === exactTotal);
                     if (matchedOrder) {
                       dbOrder = matchedOrder;
                       supabaseOrderId = dbOrder.id;
@@ -134,7 +134,7 @@ export async function POST(req) {
             // FALLBACK EXTREMO (Solo si Supabase falla)
             if (dbItems.length === 0 && orderData.lineItems?.elements) {
                 const itemMap = new Map();
-                orderData.lineItems.elements.forEach((item) => {
+                orderData.lineItems.elements.forEach((item: any) => {
                     let name = item.name || "Producto sin nombre";
                     name = name.replace(/^\[\d+x\]\s*/, ''); 
                     const note = item.note || "";
@@ -152,7 +152,7 @@ export async function POST(req) {
 
             // GENERADOR DE TARJETAS HTML PREMIUM (Para Cliente y Admin)
             if (dbItems.length > 0) {
-              unifiedItemsHtml = dbItems.map((item) => {
+              unifiedItemsHtml = dbItems.map((item: any) => {
                 const logoUrl = item.custom_logo_url || '';
                 const pName = item.product_name || 'Producto';
                 const pSize = item.size || '-';
@@ -226,8 +226,8 @@ export async function POST(req) {
               // CORREO 1: PARA EL CLIENTE
               // ==========================================
               const clientEmail = await resend.emails.send({
-                from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>', // 👈 DOMINIO ACTUALIZADO
-                reply_to: 'gregorick.liriano@gmail.com',                       // 👈 AÑADIDO PARA RECIBIR RESPUESTAS
+                from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>',
+                replyTo: 'gregorick.liriano@gmail.com', // 👈 ¡CORREGIDO A replyTo!
                 to: clientEmailAddress, 
                 subject: `¡Gracias por tu compra, ${clientName}! Pedido #${supabaseOrderId ? supabaseOrderId.split('-')[0] : orderId.slice(-6)}`,
                 html: `
@@ -263,7 +263,7 @@ export async function POST(req) {
               // CORREO 2: PARA EL ADMIN
               // ==========================================
               const adminEmail = await resend.emails.send({
-                from: 'Notificaciones <info@fieldstoneembroidery.com>', // 👈 DOMINIO ACTUALIZADO
+                from: 'Notificaciones <info@fieldstoneembroidery.com>',
                 to: 'gregorick.liriano@gmail.com', 
                 subject: `🚨 NUEVO PEDIDO PAGADO - $${totalToDisplay} (ID: #${supabaseOrderId ? supabaseOrderId.split('-')[0] : orderId.slice(-6)})`,
                 html: `
@@ -320,7 +320,7 @@ export async function POST(req) {
       }
     }
     return NextResponse.json({ status: 'ok' }, { status: 200 });
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json({ error: 'Fallo al procesar webhook' }, { status: 500 });
   }
 }
