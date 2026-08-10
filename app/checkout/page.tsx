@@ -37,7 +37,8 @@ const LOCAL_PICKUP_ZIPS = [
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { cartItems, cartTotal } = useCart();
+  // 🚀 AÑADIMOS EL clearCart AL DESTRUCTURING DEL useCart()
+  const { cartItems, cartTotal, clearCart } = useCart();
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
@@ -224,6 +225,8 @@ export default function CheckoutPage() {
       const data = await res.json();
 
       if (data.url) {
+        // 🚀 LÓGICA AGREGADA: Vaciamos el carrito justo antes de redirigir
+        clearCart();
         window.location.href = data.url;
       } else {
         alert("Ocurrió un error al contactar la pasarela de pago.");
