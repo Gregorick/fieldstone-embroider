@@ -52,7 +52,8 @@ export async function POST(req: Request) {
       const clientName = order.customer_name || 'Valued Customer';
 
       const emailResult = await resend.emails.send({
-        from: 'Fieldstone Embroidery <onboarding@resend.dev>', // En producción cambia onboarding@resend.dev por tu dominio verificado
+        from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>', // 👈 DOMINIO ACTUALIZADO
+        replyTo: 'gregorick.liriano@gmail.com',                        // 👈 AÑADIDO PARA RECIBIR RESPUESTAS
         to: order.customer_email,
         subject: `Your Order #${shortOrderId} Has Shipped! 📦`,
         html: `
