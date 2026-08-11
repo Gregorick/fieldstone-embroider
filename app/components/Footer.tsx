@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Mail, ChevronUp } from "lucide-react";
 
-// --- COMPONENTES SVG PARA REDES SOCIALES (Ya que Lucide los eliminó) ---
+// --- COMPONENTES SVG PARA REDES SOCIALES ---
 const FacebookIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
 );
@@ -30,6 +30,14 @@ export default function Footer() {
     { Icon: LinkedinIcon, href: "#" },
   ];
 
+  const productCategories = [
+    { name: "Caps", href: "/products?category=Caps" },
+    { name: "Sweatshirts/Fleece", href: "/products?category=Sweatshirts/Fleece" },
+    { name: "T-Shirts", href: "/products?category=T-Shirts" },
+    { name: "Polos/Knits", href: "/products?category=Polos/Knits" },
+    { name: "Bags", href: "/products?category=Bags" },
+  ];
+
   return (
     <footer className="bg-black text-white pt-20 pb-10">
       <div className="container mx-auto px-4">
@@ -44,14 +52,7 @@ export default function Footer() {
                 Santo Domingo, Distrito Nacional<br />
                 Dominican Republic
               </p>
-              <p className="text-white font-bold">admin@fieldstone.com</p>
-              
-              <div className="pt-4">
-                <p className="text-[10px] uppercase tracking-tighter text-gray-500 mb-1">
-                  You Have Any Questions? Call Us 24x7
-                </p>
-                <p className="text-lg font-black text-white tracking-tighter">809-555-0123</p>
-              </div>
+              <p className="text-white font-bold">dmarra@fieldstoneembroidery.com</p>
             </div>
             
             <div className="flex gap-3 pt-4">
@@ -67,9 +68,13 @@ export default function Footer() {
           <div>
             <h4 className="text-[11px] font-black uppercase tracking-[0.4em] mb-8 text-gray-400">Products</h4>
             <ul className="space-y-4 text-gray-400 text-xs font-bold uppercase tracking-widest">
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">Prices drop</Link></li>
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">New products</Link></li>
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">Best sellers</Link></li>
+              {productCategories.map((category, index) => (
+                <li key={index}>
+                  <Link href={category.href} className="hover:text-blue-500 transition-colors">
+                    {category.name}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -77,12 +82,12 @@ export default function Footer() {
           <div>
             <h4 className="text-[11px] font-black uppercase tracking-[0.4em] mb-8 text-gray-400">Our Company</h4>
             <ul className="space-y-4 text-gray-400 text-xs font-bold uppercase tracking-widest">
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">About Us</Link></li>
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">Legal Notice</Link></li>
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">Terms of use</Link></li>
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">Secure payment</Link></li>
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">Contact Us</Link></li>
-              <li><Link href="#" className="hover:text-blue-500 transition-colors">Stores</Link></li>
+              <li><Link href="/about" className="hover:text-blue-500 transition-colors">About Us</Link></li>
+              <li><Link href="/return-policy" className="hover:text-blue-500 transition-colors">Return Policy</Link></li>
+              <li><Link href="/privacy-policy" className="hover:text-blue-500 transition-colors">Privacy Policy</Link></li>
+              <li><Link href="/terms-and-conditions" className="hover:text-blue-500 transition-colors">Terms and Conditions</Link></li>
+              <li><Link href="/#contactus" className="hover:text-blue-500 transition-colors">Contact Us</Link></li>
+              <li><Link href="/products" className="hover:text-blue-500 transition-colors">Shop</Link></li>
             </ul>
           </div>
 
