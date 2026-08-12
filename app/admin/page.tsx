@@ -8,7 +8,8 @@ import {
   LayoutDashboard, ShoppingBag, FolderTree, User, Users, UserPlus,
   LogOut, Search, Eye, Edit, Check, X, Camera, Save, Lock,
   Package, ChevronDown, Download, BarChart3, Trash2, DollarSign, Truck,
-  ChevronLeft, ChevronRight, BellRing, ArrowUpRight, Send, AlertTriangle
+  ChevronLeft, ChevronRight, BellRing, ArrowUpRight, Send, AlertTriangle,
+  MessageSquare
 } from "lucide-react";
 
 const DEFAULT_TIERS = [
@@ -59,10 +60,24 @@ export default function AdminDashboard() {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({ first_name: "", last_name: "", email: "", password: "", role: "customer" });
 
+  // ESTADOS PARA FORMULARIOS
+  const [contactForms, setContactForms] = useState<any[]>([]);
+  const [newsletterForms, setNewsletterForms] = useState<any[]>([]);
+  const [activeFormTab, setActiveFormTab] = useState("contacts"); 
+  
+  // PAGINACIÓN PARA FORMULARIOS
+  const [currentFormPage, setCurrentFormPage] = useState(1);
+  const formsPerPage = 20;
+
   useEffect(() => {
     setMounted(true);
     checkAdminAndLoadData();
   }, []);
+
+  // Reiniciar la paginación al cambiar entre Contactos y Newsletters
+  useEffect(() => {
+    setCurrentFormPage(1);
+  }, [activeFormTab]);
 
   async function checkAdminAndLoadData() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -76,6 +91,7 @@ export default function AdminDashboard() {
 
     await fetchOrders();
     fetchUsers();
+    fetchFormsData(); 
 
     const { data: catData } = await supabase.rpc("get_unique_categories");
     if (catData) setAllCategories(catData.map((item: any) => item.category_name));
@@ -95,7 +111,6 @@ export default function AdminDashboard() {
     setLoading(false);
   }
 
-  // 🚀 ACTUALIZADO: Consultamos las órdenes a nuestra nueva API Admin
   const fetchOrders = async () => {
     try {
       const res = await fetch('/fieldstone-embroider/api/admin-data?type=orders');
@@ -111,7 +126,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🚀 ACTUALIZADO: Consultamos a los usuarios a nuestra nueva API Admin
   const fetchUsers = async () => {
     try {
       const res = await fetch('/fieldstone-embroider/api/admin-data?type=users');
@@ -120,6 +134,43 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const fetchFormsData = async () => {
+    try {
+      const { data: contacts } = await supabase.from("contact_submissions").select("*").order("created_at", { ascending: false });
+      if (contacts) setContactForms(contacts);
+
+      const { data: newsletters } = await supabase.from("newsletter_subscriptions").select("*").order("created_at", { ascending: false });
+      if (newsletters) setNewsletterForms(newsletters);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const exportToCSV = (data: any[], filename: string, columns: {header: string, key: string}[]) => {
+    if (data.length === 0) return alert("No data to export");
+    const csvRows = [];
+    csvRows.push(columns.map(c => c.header).join(','));
+    
+    data.forEach(row => {
+      const values = columns.map(c => {
+        let val = row[c.key] ? row[c.key].toString() : '';
+        val = val.replace(/"/g, '""'); 
+        return `"${val}"`;
+      });
+      csvRows.push(values.join(','));
+    });
+
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const handleOpenOrder = (order: any) => {
@@ -138,7 +189,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🚀 ACTUALIZADO: Enviamos el cambio de estado a la nueva API
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
       const res = await fetch('/fieldstone-embroider/api/admin-data', {
@@ -266,11 +316,24 @@ export default function AdminDashboard() {
     return filteredOrders.slice(start, start + ordersPerPage);
   }, [filteredOrders, currentPage]);
 
+  // Cálculos de Paginación para Contactos
+  const totalContactPages = Math.ceil(contactForms.length / formsPerPage) || 1;
+  const paginatedContacts = useMemo(() => {
+    const start = (currentFormPage - 1) * formsPerPage;
+    return contactForms.slice(start, start + formsPerPage);
+  }, [contactForms, currentFormPage]);
+
+  // Cálculos de Paginación para Newsletters
+  const totalNewsletterPages = Math.ceil(newsletterForms.length / formsPerPage) || 1;
+  const paginatedNewsletters = useMemo(() => {
+    const start = (currentFormPage - 1) * formsPerPage;
+    return newsletterForms.slice(start, start + formsPerPage);
+  }, [newsletterForms, currentFormPage]);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
 
-  // 🚀 ACTUALIZADO: Envía a la API centralizada
   const updateUserRole = async (userId: string, newRole: string) => {
     try {
       const res = await fetch('/fieldstone-embroider/api/admin-data', {
@@ -285,7 +348,6 @@ export default function AdminDashboard() {
     } catch (err) { console.error(err); }
   };
   
-  // 🚀 ACTUALIZADO: Envía a la API centralizada
   const deleteUser = async (userId: string) => {
     if (!confirm("Delete this user?")) return;
     try {
@@ -301,7 +363,6 @@ export default function AdminDashboard() {
     } catch (err) { console.error(err); }
   };
   
-  // 🚀 ACTUALIZADO: Crea el usuario en Supabase Auth y en Profiles desde la API Centralizada
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
@@ -404,6 +465,7 @@ export default function AdminDashboard() {
           <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "pricing" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><DollarSign size={16} /> Pricing Rules</button>
           <button onClick={() => setActiveTab("categories")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "categories" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><FolderTree size={16} /> Shop Filters</button>
           <button onClick={() => setActiveTab("users")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "users" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><Users size={16} /> Users</button>
+          <button onClick={() => setActiveTab("forms")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "forms" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><MessageSquare size={16} /> Form Data</button>
           <button onClick={() => setActiveTab("profile")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "profile" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><User size={16} /> Admin Profile</button>
         </nav>
 
@@ -519,7 +581,6 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
-
           </div>
         )}
 
@@ -818,6 +879,171 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* PESTAÑA: FORM DATA */}
+        {activeTab === "forms" && (
+          <div className="animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Form Submissions</h2>
+              
+              {activeFormTab === "contacts" ? (
+                <button 
+                  onClick={() => exportToCSV(contactForms, 'contact_messages.csv', [
+                    {header: 'Date', key: 'created_at'}, {header: 'Name', key: 'name'}, {header: 'Email', key: 'email'}, {header: 'Phone', key: 'phone'}, {header: 'Message', key: 'message'}
+                  ])}
+                  className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"
+                >
+                  <Download size={14} /> Export Contacts to CSV
+                </button>
+              ) : (
+                <button 
+                  onClick={() => exportToCSV(newsletterForms, 'newsletter_subscribers.csv', [
+                    {header: 'Date', key: 'created_at'}, {header: 'Email', key: 'email'}
+                  ])}
+                  className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"
+                >
+                  <Download size={14} /> Export Subscribers to CSV
+                </button>
+              )}
+            </div>
+
+            <div className="flex gap-4 mb-6 border-b border-gray-200">
+              <button 
+                onClick={() => setActiveFormTab("contacts")} 
+                className={`pb-4 px-2 text-[11px] font-black uppercase tracking-widest transition-all ${activeFormTab === "contacts" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Contact Us Messages ({contactForms.length})
+              </button>
+              <button 
+                onClick={() => setActiveFormTab("newsletters")} 
+                className={`pb-4 px-2 text-[11px] font-black uppercase tracking-widest transition-all ${activeFormTab === "newsletters" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Newsletter Subscribers ({newsletterForms.length})
+              </button>
+            </div>
+
+            {activeFormTab === "contacts" && (
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                      <th className="p-6">Date</th>
+                      <th className="p-6">Sender Details</th>
+                      <th className="p-6">Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedContacts.length === 0 ? (
+                      <tr><td colSpan={3} className="p-8 text-center text-gray-500 text-sm font-medium">No messages found.</td></tr>
+                    ) : (
+                      paginatedContacts.map(form => (
+                        <tr key={form.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                          <td className="p-6 align-top">
+                            <p className="text-[10px] font-bold text-gray-500 whitespace-nowrap">{new Date(form.created_at).toLocaleString()}</p>
+                          </td>
+                          <td className="p-6 align-top">
+                            <p className="text-xs font-black text-black">{form.name}</p>
+                            <p className="text-[11px] font-bold text-blue-600 mt-1"><a href={`mailto:${form.email}`}>{form.email}</a></p>
+                            <p className="text-[10px] font-bold text-gray-500 mt-1">{form.phone}</p>
+                          </td>
+                          <td className="p-6 align-top max-w-lg">
+                            <p className="text-sm font-medium text-gray-700 whitespace-pre-wrap">{form.message}</p>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                {/* PAGINACIÓN CONTACTOS */}
+                {contactForms.length > 0 && (
+                  <div className="p-6 border-t border-gray-200 flex items-center justify-between bg-gray-50/50">
+                    <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Showing <span className="text-black font-black">{((currentFormPage - 1) * formsPerPage) + 1}</span> to <span className="text-black font-black">{Math.min(currentFormPage * formsPerPage, contactForms.length)}</span> of <span className="text-black font-black">{contactForms.length}</span> messages
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setCurrentFormPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentFormPage === 1}
+                        className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="text-xs font-black uppercase tracking-widest px-4 py-2 bg-white border border-gray-300 text-black rounded-xl shadow-sm">
+                        Page {currentFormPage} of {totalContactPages}
+                      </span>
+                      <button 
+                        onClick={() => setCurrentFormPage(prev => Math.min(prev + 1, totalContactPages))}
+                        disabled={currentFormPage === totalContactPages}
+                        className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeFormTab === "newsletters" && (
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden max-w-3xl">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                      <th className="p-6">Subscribed Date</th>
+                      <th className="p-6">Email Address</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedNewsletters.length === 0 ? (
+                      <tr><td colSpan={2} className="p-8 text-center text-gray-500 text-sm font-medium">No subscribers found.</td></tr>
+                    ) : (
+                      paginatedNewsletters.map(sub => (
+                        <tr key={sub.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                          <td className="p-6">
+                            <p className="text-[10px] font-bold text-gray-500">{new Date(sub.created_at).toLocaleString()}</p>
+                          </td>
+                          <td className="p-6">
+                            <p className="text-sm font-bold text-black">{sub.email}</p>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                {/* PAGINACIÓN NEWSLETTER */}
+                {newsletterForms.length > 0 && (
+                  <div className="p-6 border-t border-gray-200 flex items-center justify-between bg-gray-50/50">
+                    <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Showing <span className="text-black font-black">{((currentFormPage - 1) * formsPerPage) + 1}</span> to <span className="text-black font-black">{Math.min(currentFormPage * formsPerPage, newsletterForms.length)}</span> of <span className="text-black font-black">{newsletterForms.length}</span> subscribers
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setCurrentFormPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentFormPage === 1}
+                        className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="text-xs font-black uppercase tracking-widest px-4 py-2 bg-white border border-gray-300 text-black rounded-xl shadow-sm">
+                        Page {currentFormPage} of {totalNewsletterPages}
+                      </span>
+                      <button 
+                        onClick={() => setCurrentFormPage(prev => Math.min(prev + 1, totalNewsletterPages))}
+                        disabled={currentFormPage === totalNewsletterPages}
+                        className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
       </main>
 
       {/* MODAL ORDEN */}
@@ -959,7 +1185,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 🚀 MODAL DE ADVERTENCIA PARA CAMBIO DE ESTADO MANUAL */}
+      {/* MODAL DE ADVERTENCIA PARA CAMBIO DE ESTADO MANUAL */}
       {pendingStatusChange && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
