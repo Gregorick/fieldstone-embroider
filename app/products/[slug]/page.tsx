@@ -234,7 +234,6 @@ function ProductPageContent() {
     availableLocations = ["Standard Location"];
   }
 
-  // 🚀 Cálculo dinámico utilizando los rangos (min y max) guardados en la BD por el admin
   const currentTier = decorationTiers.find(t => quantity >= Number(t.min) && quantity <= Number(t.max)) || decorationTiers[decorationTiers.length - 1];
   const addedPrice = decorationMethod ? currentTier[decorationMethod as "emb" | "sp"] : 0;
   const unitPrice = basePrice + addedPrice;
@@ -288,7 +287,8 @@ function ProductPageContent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
           
-          <div className="lg:col-span-6 sticky top-24">
+          {/* CONTENEDOR DE IMAGEN (FIJO SOLO EN DESKTOP CON LG:STICKY, NORMAL EN MÓVIL) */}
+          <div className="lg:col-span-6 lg:sticky lg:top-24">
             <div className="w-full h-[60vh] aspect-[4/5] bg-[#F3F3F3] rounded-[3rem] overflow-hidden p-10 flex items-center justify-center relative border border-gray-100 shadow-inner">
               <img 
                 src={mainImage || `https://cdnm.sanmar.com/catalog/images/${product.style}.jpg`} 

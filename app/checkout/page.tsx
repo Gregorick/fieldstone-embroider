@@ -37,7 +37,6 @@ const LOCAL_PICKUP_ZIPS = [
 
 export default function CheckoutPage() {
   const router = useRouter();
-  // 🚀 AÑADIMOS EL clearCart AL DESTRUCTURING DEL useCart()
   const { cartItems, cartTotal, clearCart } = useCart();
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -46,6 +45,9 @@ export default function CheckoutPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [savedProfile, setSavedProfile] = useState<any>(null);
   const [useSavedAddress, setUseSavedAddress] = useState(false);
+  
+  // 🚀 ESTADO NUEVO: Control del Checkbox de Términos y Condiciones
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -58,7 +60,6 @@ export default function CheckoutPage() {
     phone: ""
   });
 
-  // Lógica de tarifas de procesamiento
   const feeThreshold = 300;
   const feeAmount = 65;
   const appliesSmallOrderFee = cartTotal > 0 && cartTotal < feeThreshold;
@@ -150,12 +151,12 @@ export default function CheckoutPage() {
 
   const isPickupEligible = checkIsLocalPickup(formData.zipCode);
   const shippingCost = isPickupEligible ? 0 : 40;
-  
-  // Total actualizado: Subtotal + Envío + Cargo de Procesamiento Pequeño
   const finalTotal = cartTotal + shippingCost + currentFee;
 
   const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!agreedToTerms) return; // Validación extra de seguridad anti-bot
+
     setIsProcessing(true);
     setAddressError(null);
 
@@ -205,7 +206,6 @@ export default function CheckoutPage() {
 
       const orderId = orderResult.orderId;
 
-      // 🚨 Enviamos la nueva tarifa al backend
       const res = await fetch('/fieldstone-embroider/api/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,7 +214,7 @@ export default function CheckoutPage() {
           email: formData.email,
           orderId: orderId,
           shippingCost: shippingCost,
-          smallOrderFee: currentFee // <-- ESTO SE AGREGA
+          smallOrderFee: currentFee
         }),
       });
 
@@ -225,7 +225,6 @@ export default function CheckoutPage() {
       const data = await res.json();
 
       if (data.url) {
-        // 🚀 LÓGICA AGREGADA: Vaciamos el carrito justo antes de redirigir
         clearCart();
         window.location.href = data.url;
       } else {
@@ -396,7 +395,6 @@ export default function CheckoutPage() {
           <div className="lg:col-span-5 w-full bg-gray-50 p-8 md:p-10 rounded-[2.5rem] sticky top-8 border border-gray-100">
             <h2 className="text-2xl font-black uppercase tracking-tighter text-black mb-8">Order Summary</h2>
             
-            {/* 🚨 Alerta visual si aplica el cargo de procesamiento */}
             {appliesSmallOrderFee && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
                 <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
@@ -434,7 +432,6 @@ export default function CheckoutPage() {
                 <span className="text-black">${cartTotal.toFixed(2)}</span>
               </div>
 
-              {/* 🚨 Línea que muestra el cargo en el resumen si aplica */}
               {appliesSmallOrderFee && (
                 <div className="flex justify-between text-[13px] font-bold text-amber-600">
                   <span className="flex items-center gap-2">Small Order Fee</span>
@@ -464,16 +461,30 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            <div className="flex justify-between items-end mb-8">
+            <div className="flex justify-between items-end mb-6">
               <span className="text-[14px] font-black uppercase tracking-widest text-black">Total</span>
               <span className="text-4xl font-black text-black tracking-tighter leading-none">${finalTotal.toFixed(2)}</span>
+            </div>
+
+            {/* 🚀 CHECKBOX DE TÉRMINOS Y CONDICIONES */}
+            <div className="mb-6 flex items-start gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+              <input 
+                type="checkbox" 
+                id="terms-checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-1 w-4 h-4 accent-black cursor-pointer rounded" 
+              />
+              <label htmlFor="terms-checkbox" className="text-[11px] font-bold text-gray-600 leading-tight cursor-pointer">
+                I agree to the <Link href="/terms-and-conditions" target="_blank" className="text-black underline hover:text-blue-600">Terms and Conditions</Link> and <Link href="/privacy-policy" target="_blank" className="text-black underline hover:text-blue-600">Privacy Policy</Link>. *
+              </label>
             </div>
 
             <button 
               form="checkout-form" 
               type="submit"
-              disabled={isProcessing}
-              className="w-full h-16 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-[#3b5bdb] transition-colors shadow-2xl flex items-center justify-center gap-3 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              disabled={isProcessing || !agreedToTerms}
+              className="w-full h-16 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-[#3b5bdb] transition-colors shadow-2xl flex items-center justify-center gap-3 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
             >
               {isProcessing ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

@@ -224,7 +224,7 @@ function ProductsContent() {
           matchingStyles = matchingStyles.slice(0, 800); 
         }
 
-        // 🌟 PASO 2: Llamamos a la vista principal para obtener el SLUG MAESTRO que necesita la página de detalles
+        // 🌟 PASO 2: Llamamos a la vista principal para obtener el SLUG MAESTRO
         let query = supabase
           .from("products_unique_styles")
           .select("*", { count: "exact" });
@@ -293,14 +293,14 @@ function ProductsContent() {
   const showingFrom = totalProducts === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1;
   const showingTo = Math.min(currentPage * ITEMS_PER_PAGE, totalProducts);
 
-  // 🚀 CONSTRUCTOR DE URLS AMIGABLES (USA EL SLUG)
+  // 🚀 CONSTRUCTOR DE URLS AMIGABLES
   const buildProductUrl = (product: any) => {
     const params = new URLSearchParams();
     if (selectedColors.length > 0) params.append("color", selectedColors[0]);
     if (selectedSizes.length > 0) params.append("size", selectedSizes[0]);
     
     const queryString = params.toString();
-    const identifier = product.slug || product.id; // Usa el slug generado, respaldado por el id si faltara
+    const identifier = product.slug || product.id;
     
     return `/products/${identifier}${queryString ? `?${queryString}` : ""}`;
   };
@@ -315,12 +315,14 @@ function ProductsContent() {
           <ChevronRight size={10} />
           <span className="text-black">Shop All</span>
         </div>
-        <div className="flex justify-between items-end border-b border-gray-100 pb-6">
-          <h1 className="text-5xl font-black uppercase tracking-tighter text-black italic leading-none">
+        
+        {/* 🔥 CORRECCIÓN RESPONSIVA APLICADA AQUÍ */}
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-4 lg:gap-0 border-b border-gray-100 pb-6">
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tighter text-black italic leading-tight lg:leading-none break-words">
             {selectedCategory || "The Collection"}
           </h1>
           <button 
-            className="lg:hidden flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black border border-gray-200 px-4 py-2 rounded-full"
+            className="lg:hidden w-fit flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-black border border-gray-200 px-6 py-2.5 rounded-full"
             onClick={() => setIsMobileFiltersOpen(true)}
           >
             <Filter size={14} /> Filters

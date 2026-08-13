@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import logoImg from '@/public/logo.png';
 import Link from "next/link";
-import { Search, ShoppingBag, User, ChevronRight, X, ArrowRight, Upload, Grip } from "lucide-react";
+import { Search, ShoppingBag, User, ChevronRight, X, ArrowRight, Upload, Grip, Menu } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "../context/CartContext";
 
@@ -60,6 +60,7 @@ const brandImagesMap: Record<string, any> = {
 export default function Header() {
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isBrandMenuOpen, setIsBrandMenuOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // NUEVO ESTADO MÓVIL
   
   const [allBrands, setAllBrands] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -132,7 +133,6 @@ export default function Header() {
         setCategories(uniqueCats);
 
         const imgMap: Record<string, string> = {};
-        // ✅ CORRECCIÓN DE TYPESCRIPT: Añadido tipado explícito (cat: string)
         const imagePromises = uniqueCats.map(async (cat: string) => {
           const { data } = await supabase
             .from("products_unique_styles")
@@ -248,10 +248,15 @@ export default function Header() {
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
 
+  // BLOQUEO DE SCROLL CUANDO MODALES/MENÚS ESTÁN ABIERTOS
   useEffect(() => {
-    document.body.style.overflow = isSearchOpen ? "hidden" : "unset";
+    if (isSearchOpen || isMobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
     if (!isSearchOpen) setSearchQuery(""); 
-  }, [isSearchOpen]);
+  }, [isSearchOpen, isMobileMenuOpen]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -286,7 +291,15 @@ export default function Header() {
       >
         <div className="container mx-auto px-4 flex items-center justify-between relative min-h-[65px]">
           
-          <div className="relative z-50 flex items-center h-full">
+          <div className="relative z-50 flex items-center h-full gap-3">
+            {/* BOTÓN HAMBURGUESA (MÓVIL) */}
+            <button 
+              className="md:hidden p-1 -ml-1 text-black hover:text-[#8012d8] transition-colors"
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <Menu size={26} strokeWidth={2} />
+            </button>
+
             <Link href="/" onClick={() => { setIsMegaMenuOpen(false); setIsBrandMenuOpen(false); }}>
               <Image 
                 src={logoImg} 
@@ -332,7 +345,7 @@ export default function Header() {
 
             <button onClick={() => setIsSearchOpen(true)} className="p-2 hover:bg-gray-50 rounded-full text-black transition-colors cursor-pointer"><Search size={20} strokeWidth={2.5} /></button>
 
-            <div className="relative group py-4">
+            <div className="relative hidden md:block group py-4">
               <Link href={user ? "/account" : "/login"} className="flex items-center justify-center p-2 hover:bg-gray-50 rounded-full text-black transition-colors w-10 h-10">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="User Avatar" className="w-7 h-7 rounded-full object-cover border border-gray-200" />
@@ -365,9 +378,108 @@ export default function Header() {
           </div>
         </div>
 
-        {/* --- MEGA MENU BRANDS --- */}
+        {/* --- MENÚ LATERAL MÓVIL (DRAWER) --- */}
+        <div 
+          className={`fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? "opacity-100 visible" : "opacity-0 invisible"}`} 
+          onClick={() => setIsMobileMenuOpen(false)} 
+        />
+        
+        <div className={`fixed top-0 left-0 h-full w-[85%] max-w-[340px] bg-white z-[200] transform transition-transform duration-300 ease-in-out flex flex-col shadow-2xl md:hidden ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
+            
+            {/* Header del Drawer */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 min-h-[65px] bg-white shrink-0">
+              <Link href="/" onClick={() => setIsMobileMenuOpen(false)}>
+                <Image src={logoImg} alt="Logo" width={100} height={30} className="object-contain" />
+              </Link>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-500 hover:text-black transition-colors">
+                <X size={20} strokeWidth={2} />
+              </button>
+            </div>
+            
+            {/* Contenido desplazable */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-white">
+               
+               {/* Sección: SHOP */}
+               <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-5">Shop Categories</p>
+                  <div className="space-y-5">
+                     <Link href="/products" onClick={() => setIsMobileMenuOpen(false)} className="block text-xl font-black uppercase tracking-tighter text-black hover:text-[#8012d8] transition-colors">All Products</Link>
+                     {categories.slice(0, 6).map(cat => (
+                        <Link key={cat} href={`/products?category=${encodeURIComponent(cat)}`} onClick={() => setIsMobileMenuOpen(false)} className="block text-sm font-bold text-gray-600 hover:text-[#8012d8] transition-colors uppercase tracking-widest">{cat}</Link>
+                     ))}
+                  </div>
+               </div>
+
+               <div className="w-full h-px bg-gray-100" />
+
+               {/* Sección: BRANDS */}
+               <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-5">Top Brands</p>
+                  <div className="space-y-5">
+                     {allBrands.slice(0, 6).map(brand => (
+                        <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} onClick={() => setIsMobileMenuOpen(false)} className="block text-sm font-bold text-gray-600 hover:text-[#8012d8] transition-colors uppercase tracking-widest">{brand}</Link>
+                     ))}
+                     <Link href="/products" onClick={() => setIsMobileMenuOpen(false)} className="inline-flex items-center gap-2 text-[11px] font-black text-[#8012d8] hover:text-black transition-colors uppercase tracking-widest mt-2">
+                       Explore All Brands <ArrowRight size={14} />
+                     </Link>
+                  </div>
+               </div>
+
+               <div className="w-full h-px bg-gray-100" />
+
+               {/* Sección: EMPRESA */}
+               <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-5">Company</p>
+                  <div className="space-y-5">
+                     <Link href="/about" onClick={() => setIsMobileMenuOpen(false)} className="block text-sm font-bold text-gray-600 hover:text-black uppercase tracking-widest">About Us</Link>
+                     <Link href="/#contactus" onClick={() => setIsMobileMenuOpen(false)} className="block text-sm font-bold text-gray-600 hover:text-black uppercase tracking-widest">Contact Support</Link>
+                  </div>
+               </div>
+            </div>
+
+            {/* Footer del Drawer (Account & Logo) */}
+            <div className="border-t border-gray-100 bg-gray-50 p-6 flex flex-col gap-6 shrink-0">
+               
+               <div className="flex items-center justify-between">
+                  {user ? (
+                     <div className="flex flex-col gap-3 w-full">
+                        <Link href="/account" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 text-sm font-black uppercase tracking-widest text-black hover:text-[#8012d8] transition-colors">
+                          <User size={18} /> My Account
+                        </Link>
+                        <button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }} className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors text-left pl-7">
+                          Logout Session
+                        </button>
+                     </div>
+                  ) : (
+                     <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 text-sm font-black uppercase tracking-widest text-black hover:text-[#8012d8] transition-colors">
+                       <User size={18} /> Sign In / Register
+                     </Link>
+                  )}
+               </div>
+
+               <div className="border-t border-gray-200 pt-5">
+                  {uploadedLogo ? (
+                    <div className="flex items-center gap-4 bg-white p-3 border border-gray-200 rounded-xl">
+                       <div className="w-10 h-10 rounded-lg p-1 bg-gray-50 flex items-center justify-center shrink-0">
+                          <img src={uploadedLogo} className="w-full h-full object-contain" alt="Custom Logo" />
+                       </div>
+                       <div className="flex flex-col">
+                          <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Your Artwork</span>
+                          <button onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black text-[#8012d8] uppercase tracking-widest text-left">Upload New</button>
+                       </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-3 text-xs font-black uppercase tracking-widest text-black hover:text-[#8012d8] transition-colors w-full p-3 bg-white border border-gray-200 rounded-xl">
+                      <Upload size={16} /> Upload Custom Logo
+                    </button>
+                  )}
+               </div>
+            </div>
+        </div>
+
+        {/* --- MEGA MENU BRANDS (DESKTOP) --- */}
         {isBrandMenuOpen && !isSearchOpen && (
-          <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200 p-8 z-[90] max-h-[600px] overflow-y-auto custom-scrollbar">
+          <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200 p-8 z-[90] max-h-[600px] overflow-y-auto custom-scrollbar hidden md:block">
              <div className="container mx-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-black uppercase tracking-widest text-black italic">Featured Brands</h3>
@@ -384,9 +496,9 @@ export default function Header() {
           </div>
         )}
 
-        {/* --- MEGA MENU SHOP --- */}
+        {/* --- MEGA MENU SHOP (DESKTOP) --- */}
         {isMegaMenuOpen && !isSearchOpen && (
-          <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-1 duration-200 h-[calc(100vh-65px)] max-h-[850px] z-[90]" onMouseEnter={() => setIsMegaMenuOpen(true)}>
+          <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-1 duration-200 h-[calc(100vh-65px)] max-h-[850px] z-[90] hidden md:block" onMouseEnter={() => setIsMegaMenuOpen(true)}>
             <div className="container mx-auto flex h-full relative">
               <button onClick={() => setIsMegaMenuOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-black transition-all z-50">
                 <X size={24} strokeWidth={1.5} />
