@@ -9,7 +9,7 @@ import {
   LogOut, Search, Eye, Edit, Check, X, Camera, Save, Lock,
   Package, ChevronDown, Download, BarChart3, Trash2, DollarSign, Truck,
   ChevronLeft, ChevronRight, BellRing, ArrowUpRight, Send, AlertTriangle,
-  MessageSquare
+  MessageSquare, PanelBottom 
 } from "lucide-react";
 
 const DEFAULT_TIERS = [
@@ -56,16 +56,25 @@ export default function AdminDashboard() {
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
 
+  // ESTADOS DEL FOOTER
+  const [footerData, setFooterData] = useState({
+    companyName: "Fieldstone Embroidery Store",
+    address: "Santo Domingo, Distrito Nacional\nDominican Republic",
+    email: "dmarra@fieldstoneembroidery.com",
+    facebookUrl: "#",
+    twitterUrl: "#",
+    instagramUrl: "#",
+    linkedinUrl: "#"
+  });
+
   const [usersList, setUsersList] = useState<any[]>([]);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({ first_name: "", last_name: "", email: "", password: "", role: "customer" });
 
-  // ESTADOS PARA FORMULARIOS
   const [contactForms, setContactForms] = useState<any[]>([]);
   const [newsletterForms, setNewsletterForms] = useState<any[]>([]);
   const [activeFormTab, setActiveFormTab] = useState("contacts"); 
   
-  // PAGINACIÓN PARA FORMULARIOS
   const [currentFormPage, setCurrentFormPage] = useState(1);
   const formsPerPage = 20;
 
@@ -74,7 +83,6 @@ export default function AdminDashboard() {
     checkAdminAndLoadData();
   }, []);
 
-  // Reiniciar la paginación al cambiar entre Contactos y Newsletters
   useEffect(() => {
     setCurrentFormPage(1);
   }, [activeFormTab]);
@@ -106,6 +114,16 @@ export default function AdminDashboard() {
       if (settings.small_order_fee_threshold) setFeeThreshold(settings.small_order_fee_threshold);
       if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
       if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
+      
+      setFooterData({
+        companyName: settings.footer_company_name || "Fieldstone Embroidery Store",
+        address: settings.footer_address || "Santo Domingo, Distrito Nacional\nDominican Republic",
+        email: settings.footer_email || "dmarra@fieldstoneembroidery.com",
+        facebookUrl: settings.footer_facebook_url || "#",
+        twitterUrl: settings.footer_twitter_url || "#",
+        instagramUrl: settings.footer_instagram_url || "#",
+        linkedinUrl: settings.footer_linkedin_url || "#"
+      });
     }
 
     setLoading(false);
@@ -316,14 +334,12 @@ export default function AdminDashboard() {
     return filteredOrders.slice(start, start + ordersPerPage);
   }, [filteredOrders, currentPage]);
 
-  // Cálculos de Paginación para Contactos
   const totalContactPages = Math.ceil(contactForms.length / formsPerPage) || 1;
   const paginatedContacts = useMemo(() => {
     const start = (currentFormPage - 1) * formsPerPage;
     return contactForms.slice(start, start + formsPerPage);
   }, [contactForms, currentFormPage]);
 
-  // Cálculos de Paginación para Newsletters
   const totalNewsletterPages = Math.ceil(newsletterForms.length / formsPerPage) || 1;
   const paginatedNewsletters = useMemo(() => {
     const start = (currentFormPage - 1) * formsPerPage;
@@ -409,7 +425,14 @@ export default function AdminDashboard() {
       visible_brands: visibleBrands, 
       small_order_fee_threshold: feeThreshold, 
       small_order_fee_amount: feeAmount, 
-      decoration_tiers: pricingTiers 
+      decoration_tiers: pricingTiers,
+      footer_company_name: footerData.companyName,
+      footer_address: footerData.address,
+      footer_email: footerData.email,
+      footer_facebook_url: footerData.facebookUrl,
+      footer_twitter_url: footerData.twitterUrl,
+      footer_instagram_url: footerData.instagramUrl,
+      footer_linkedin_url: footerData.linkedinUrl
     });
     setLoading(false);
     if (error) alert("Error saving settings: " + error.message); else alert("Store settings updated successfully!");
@@ -464,6 +487,7 @@ export default function AdminDashboard() {
           <button onClick={() => setActiveTab("orders")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "orders" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><ShoppingBag size={16} /> Orders</button>
           <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "pricing" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><DollarSign size={16} /> Pricing Rules</button>
           <button onClick={() => setActiveTab("categories")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "categories" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><FolderTree size={16} /> Shop Filters</button>
+          <button onClick={() => setActiveTab("footer")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "footer" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><PanelBottom size={16} /> Footer Details</button>
           <button onClick={() => setActiveTab("users")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "users" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><Users size={16} /> Users</button>
           <button onClick={() => setActiveTab("forms")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "forms" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><MessageSquare size={16} /> Form Data</button>
           <button onClick={() => setActiveTab("profile")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "profile" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><User size={16} /> Admin Profile</button>
@@ -787,43 +811,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: USUARIOS */}
-        {activeTab === "users" && (
-          <div className="animate-in fade-in duration-500">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Manage Users</h2>
-              <button onClick={() => setIsUserModalOpen(true)} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"><UserPlus size={14} /> Add New User</button>
-            </div>
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                    <th className="p-6">User Details</th><th className="p-6">Email Address</th><th className="p-6">Role</th><th className="p-6">Joined Date</th><th className="p-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersList.map(u => (
-                    <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="p-6 flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-300 overflow-hidden flex-shrink-0">{u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-500" />}</div>
-                        <div><p className="text-xs font-bold text-black uppercase tracking-wider">{u.first_name || "Unknown"} {u.last_name || ""}</p><p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mt-1">ID: {u.id.substring(0, 8)}</p></div>
-                      </td>
-                      <td className="p-6"><p className="text-xs font-bold text-gray-800">{u.email || "No email recorded"}</p></td>
-                      <td className="p-6">
-                        <select value={u.role || 'customer'} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={u.id === adminUser.id} className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50 disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-500">
-                          <option value="customer">Customer</option><option value="admin">Admin</option>
-                        </select>
-                      </td>
-                      <td className="p-6"><p className="text-xs font-bold text-gray-600">{new Date(u.created_at).toLocaleDateString()}</p></td>
-                      <td className="p-6 text-right"><button onClick={() => deleteUser(u.id)} disabled={u.id === adminUser.id} className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"><Trash2 size={16} /></button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
         {/* PESTAÑA: CATEGORÍAS */}
         {activeTab === "categories" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
@@ -860,22 +847,101 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: PERFIL */}
-        {activeTab === "profile" && (
-          <div className="animate-in fade-in duration-500 max-w-2xl">
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
-            <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-200 space-y-8">
-              <div className="flex items-center gap-8 pb-8 border-b border-gray-200">
-                <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-300">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
-                <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-500 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
+        {/* --- NUEVA PESTAÑA: FOOTER SETTINGS --- */}
+        {activeTab === "footer" && (
+          <div className="animate-in fade-in duration-500 max-w-4xl">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Footer Details</h2>
+              <button onClick={saveSettings} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2">
+                <Save size={14} /> Save Footer
+              </button>
+            </div>
+
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 space-y-6">
+              <div>
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Company Contact Info</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">This information will be displayed in the first column of the footer.</p>
               </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name</label><input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
-                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name</label><input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
-                <div className="col-span-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label><input type="email" disabled value={adminUser?.email} className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed"/></div>
-                <div className="col-span-2 pt-4"><h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2"><Lock size={14} /> Security</h4><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">New Password (leave blank to keep current)</label><input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Company Name</label>
+                  <input type="text" value={footerData.companyName} onChange={e => setFooterData({...footerData, companyName: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+                
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Physical Address (Use Shift+Enter for new line)</label>
+                  <textarea rows={3} value={footerData.address} onChange={e => setFooterData({...footerData, address: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Contact Email</label>
+                  <input type="email" value={footerData.email} onChange={e => setFooterData({...footerData, email: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
               </div>
-              <div className="pt-6"><button onClick={updateAdminProfile} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl">Save Admin Profile</button></div>
+            </div>
+
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 space-y-6">
+              <div>
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Social Media Links</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Enter the full URLs for your social media profiles. Leave as "#" if you don't have one.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Facebook URL</label>
+                  <input type="url" value={footerData.facebookUrl} onChange={e => setFooterData({...footerData, facebookUrl: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Twitter / X URL</label>
+                  <input type="url" value={footerData.twitterUrl} onChange={e => setFooterData({...footerData, twitterUrl: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Instagram URL</label>
+                  <input type="url" value={footerData.instagramUrl} onChange={e => setFooterData({...footerData, instagramUrl: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">LinkedIn URL</label>
+                  <input type="url" value={footerData.linkedinUrl} onChange={e => setFooterData({...footerData, linkedinUrl: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PESTAÑA: USUARIOS */}
+        {activeTab === "users" && (
+          <div className="animate-in fade-in duration-500">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Manage Users</h2>
+              <button onClick={() => setIsUserModalOpen(true)} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"><UserPlus size={14} /> Add New User</button>
+            </div>
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                    <th className="p-6">User Details</th><th className="p-6">Email Address</th><th className="p-6">Role</th><th className="p-6">Joined Date</th><th className="p-6 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usersList.map(u => (
+                    <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td className="p-6 flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-300 overflow-hidden flex-shrink-0">{u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-500" />}</div>
+                        <div><p className="text-xs font-bold text-black uppercase tracking-wider">{u.first_name || "Unknown"} {u.last_name || ""}</p><p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mt-1">ID: {u.id.substring(0, 8)}</p></div>
+                      </td>
+                      <td className="p-6"><p className="text-xs font-bold text-gray-800">{u.email || "No email recorded"}</p></td>
+                      <td className="p-6">
+                        <select value={u.role || 'customer'} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={u.id === adminUser.id} className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50 disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-500">
+                          <option value="customer">Customer</option><option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td className="p-6"><p className="text-xs font-bold text-gray-600">{new Date(u.created_at).toLocaleDateString()}</p></td>
+                      <td className="p-6 text-right"><button onClick={() => deleteUser(u.id)} disabled={u.id === adminUser.id} className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"><Trash2 size={16} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -1041,6 +1107,26 @@ export default function AdminDashboard() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* PESTAÑA: PERFIL */}
+        {activeTab === "profile" && (
+          <div className="animate-in fade-in duration-500 max-w-2xl">
+            <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
+            <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-200 space-y-8">
+              <div className="flex items-center gap-8 pb-8 border-b border-gray-200">
+                <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-300">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
+                <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-500 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name</label><input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name</label><input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                <div className="col-span-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label><input type="email" disabled value={adminUser?.email} className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed"/></div>
+                <div className="col-span-2 pt-4"><h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2"><Lock size={14} /> Security</h4><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">New Password (leave blank to keep current)</label><input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+              </div>
+              <div className="pt-6"><button onClick={updateAdminProfile} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl">Save Admin Profile</button></div>
+            </div>
           </div>
         )}
 

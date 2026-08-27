@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Mail, ChevronUp } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -14,11 +14,40 @@ const LinkedinIcon = () => ( <svg width="18" height="18" viewBox="0 0 24 24" fil
 export default function Footer() {
   const scrollToTop = () => { window.scrollTo({ top: 0, behavior: "smooth" }); };
 
+  // --- ESTADO DINÁMICO DEL FOOTER DESDE SUPABASE ---
+  const [contactInfo, setContactInfo] = useState({
+    companyName: "Fieldstone Embroidery Store",
+    address: "Santo Domingo, Distrito Nacional\nDominican Republic",
+    email: "dmarra@fieldstoneembroidery.com",
+    facebookUrl: "#",
+    twitterUrl: "#",
+    instagramUrl: "#",
+    linkedinUrl: "#"
+  });
+
+  useEffect(() => {
+    async function loadFooterSettings() {
+      const { data } = await supabase.from('store_settings').select('*').eq('id', 'default').single();
+      if (data) {
+        setContactInfo({
+          companyName: data.footer_company_name || "Fieldstone Embroidery Store",
+          address: data.footer_address || "Santo Domingo, Distrito Nacional\nDominican Republic",
+          email: data.footer_email || "dmarra@fieldstoneembroidery.com",
+          facebookUrl: data.footer_facebook_url || "#",
+          twitterUrl: data.footer_twitter_url || "#",
+          instagramUrl: data.footer_instagram_url || "#",
+          linkedinUrl: data.footer_linkedin_url || "#"
+        });
+      }
+    }
+    loadFooterSettings();
+  }, []);
+
   const socialLinks = [
-    { Icon: FacebookIcon, href: "#" },
-    { Icon: TwitterIcon, href: "#" },
-    { Icon: InstagramIcon, href: "#" },
-    { Icon: LinkedinIcon, href: "#" },
+    { Icon: FacebookIcon, href: contactInfo.facebookUrl },
+    { Icon: TwitterIcon, href: contactInfo.twitterUrl },
+    { Icon: InstagramIcon, href: contactInfo.instagramUrl },
+    { Icon: LinkedinIcon, href: contactInfo.linkedinUrl },
   ];
 
   const productCategories = [
@@ -77,9 +106,10 @@ export default function Footer() {
           <div className="space-y-6">
             <h4 className="text-[11px] font-black uppercase tracking-[0.4em] mb-8 text-gray-400">Contact Us</h4>
             <div className="text-gray-400 text-xs leading-6 space-y-4 font-medium">
-              <p className="text-white font-black tracking-tight text-sm">Fieldstone Embroidery Store</p>
-              <p>Santo Domingo, Distrito Nacional<br />Dominican Republic</p>
-              <p className="text-white font-bold">dmarra@fieldstoneembroidery.com</p>
+              <p className="text-white font-black tracking-tight text-sm">{contactInfo.companyName}</p>
+              {/* Para que los saltos de línea (\n) introducidos en el admin se rendericen correctamente */}
+              <p className="whitespace-pre-line">{contactInfo.address}</p>
+              <p className="text-white font-bold"><a href={`mailto:${contactInfo.email}`}>{contactInfo.email}</a></p>
             </div>
             <div className="flex gap-3 pt-4">
               {socialLinks.map((social, i) => (
@@ -139,9 +169,9 @@ export default function Footer() {
 
         <div className="border-t border-zinc-900 pt-10 flex flex-col md:flex-row justify-between items-center gap-6 relative">
           <p className="text-[9px] text-gray-600 uppercase tracking-[0.3em] font-bold">
-            © 2026 - <span className="text-gray-500">Fieldstone Embroidery Store.</span> All Rights Reserved.
+            © {new Date().getFullYear()} - <span className="text-gray-500">{contactInfo.companyName}</span> All Rights Reserved.
           </p>
-          <div className="flex gap-4 items-center grayscale opacity-30">
+          <div className="flex gap-4 items-center opacity-100">
             <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Visa_Inc._logo_%282005%E2%80%932014%29.svg/960px-Visa_Inc._logo_%282005%E2%80%932014%29.svg.png?_=20170118154621" alt="Visa" className="h-5" />
             <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" alt="PayPal" className="h-5" />
             <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard" className="h-10" />

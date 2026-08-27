@@ -46,7 +46,6 @@ export default function CheckoutPage() {
   const [savedProfile, setSavedProfile] = useState<any>(null);
   const [useSavedAddress, setUseSavedAddress] = useState(false);
   
-  // 🚀 ESTADO NUEVO: Control del Checkbox de Términos y Condiciones
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -206,7 +205,8 @@ export default function CheckoutPage() {
 
       const orderId = orderResult.orderId;
 
-      const res = await fetch('/fieldstone-embroider/api/create-checkout', {
+      // 🚀 RUTA ACTUALIZADA A STRIPE
+      const res = await fetch('/fieldstone-embroider/api/create-stripe-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -383,8 +383,9 @@ export default function CheckoutPage() {
                 <div className="border border-gray-200 rounded-xl overflow-hidden p-8 text-center bg-gray-50">
                   <ShieldCheck size={48} className="mx-auto text-green-500 mb-4" />
                   <h3 className="text-sm font-bold text-black mb-2">Secure Payment Authorization</h3>
+                  {/* 🚀 TEXTO ACTUALIZADO A STRIPE */}
                   <p className="text-xs text-gray-500 max-w-md mx-auto">
-                    To guarantee your security, Fieldstone Embroidery does not store credit card information. You will be redirected to Clover's secure vault to complete your purchase.
+                    To guarantee your security, Fieldstone Embroidery does not store credit card information. You will be redirected to Stripe's secure vault to complete your purchase.
                   </p>
                 </div>
               </section>
@@ -466,7 +467,6 @@ export default function CheckoutPage() {
               <span className="text-4xl font-black text-black tracking-tighter leading-none">${finalTotal.toFixed(2)}</span>
             </div>
 
-            {/* 🚀 CHECKBOX DE TÉRMINOS Y CONDICIONES */}
             <div className="mb-6 flex items-start gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
               <input 
                 type="checkbox" 
