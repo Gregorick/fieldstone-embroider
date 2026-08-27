@@ -42,11 +42,10 @@ export async function POST(req: Request) {
     if (orderId) {
       console.log(`Procesando orden ${orderId} con Stripe ID: ${paymentIntentId}`);
       
-      // 1. Actualizamos la orden en Supabase
+      // 1. Actualizamos la orden en Supabase (Removida la columna 'status' que no existe)
       const { data: updatedOrder, error: updateError } = await supabase
         .from('orders')
         .update({ 
-          status: 'paid',
           payment_status: 'paid',
           order_status: 'processing',
           payment_id: paymentIntentId 
@@ -151,7 +150,7 @@ export async function POST(req: Request) {
 
       try {
         // CORREO 1: PARA EL CLIENTE
-        const clientEmail = await resend.emails.send({
+        await resend.emails.send({
           from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>',
           replyTo: 'gregorick.liriano@gmail.com',
           to: clientEmailAddress, 
@@ -179,7 +178,7 @@ export async function POST(req: Request) {
         });
 
         // CORREO 2: PARA EL ADMIN
-        const adminEmail = await resend.emails.send({
+        await resend.emails.send({
           from: 'Notificaciones <info@fieldstoneembroidery.com>',
           to: 'gregorick.liriano@gmail.com', 
           subject: `🚨 NUEVO PEDIDO PAGADO - $${totalToDisplay} (ID: #${shortOrderId})`,
@@ -224,7 +223,6 @@ export async function POST(req: Request) {
 
       } catch (emailErr: any) {
          console.error("Error crítico ejecutando correos:", emailErr);
-         // Devolvemos 500 si Resend falla
          return NextResponse.json({ error: "Fallo al enviar correos", details: emailErr.message }, { status: 500 });
       }
     }
