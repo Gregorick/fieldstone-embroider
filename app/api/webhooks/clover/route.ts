@@ -1,14 +1,9 @@
 import { NextResponse } from 'next/server';
-import { headers } from 'next/headers';
-import Stripe from 'stripe';
+import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
 // Inicializaciones
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2023-10-16',
-});
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string 
@@ -16,40 +11,67 @@ const supabase = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Función para verificar la firma de Clover
+function verifyCloverSignature(payload: string, signature: string, secret: string) {
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('base64');
+    
+  return signature === expectedSignature;
+}
+
 export async function POST(req: Request) {
-  const body = await req.text();
-  const signature = headers().get('Stripe-Signature') as string;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://fieldstoneembroidery.com";
-  let event: Stripe.Event;
-
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET as string
-    );
-  } catch (err: any) {
-    console.error(`Webhook Error: ${err.message}`);
-    return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
-  }
+    const body = await req.text();
+    const signature = req.headers.get('X-Clover-Signature') || '';
+    const secret = process.env.CLOVER_WEBHOOK_SECRET || '';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://fieldstoneembroidery.com/fieldstone-embroider";
 
-  // Si el pago fue completado con éxito
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const orderId = session.metadata?.orderId; // ID de Supabase
-    const paymentIntentId = session.payment_intent as string; // ID de Stripe
+    // Verificar firma (opcional pero recomendado en producción)
+    if (secret && signature && !verifyCloverSignature(body, signature, secret)) {
+      console.warn("Firma de Clover inválida");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
 
-    if (orderId) {
-      console.log(`Procesando orden ${orderId} con Stripe ID: ${paymentIntentId}`);
+    const event = JSON.parse(body);
+    console.log("Clover Webhook recibido:", event.type);
+
+    // Procesamos pagos pagados o completados
+    if (event.type === 'PAYMENT_SUCCESS' || event.type === 'ORDER_PAID' || (event.type === 'UPDATE' && event.data?.paymentState === 'PAID')) {
       
-      // 1. Actualizamos la orden en Supabase
+      const paymentData = event.data || event.object || {};
+      const cloverOrderId = paymentData.orderId || paymentData.id;
+      const paymentIntentId = paymentData.paymentId || paymentData.id || "clover_payment";
+      
+      if (!cloverOrderId) {
+        return NextResponse.json({ received: true });
+      }
+
+      console.log(`Procesando orden Clover: ${cloverOrderId}`);
+      
+      // 1. Buscamos la orden en nuestra base de datos que tenga ese Clover Order ID
+      // Como guardaste el cloverOrderId en Supabase al crear la orden
+      const { data: orderData, error: findError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('payment_id', cloverOrderId)
+        .single();
+
+      if (findError || !orderData) {
+        console.error('No se encontró la orden en Supabase para el ID de Clover:', cloverOrderId);
+        return NextResponse.json({ received: true });
+      }
+
+      const orderId = orderData.id;
+
+      // 2. Actualizamos la orden en Supabase
       const { data: updatedOrder, error: updateError } = await supabase
         .from('orders')
         .update({ 
-          status: 'paid', // o 'processing' si lo manejas así
+          status: 'paid',
           payment_status: 'paid',
-          order_status: 'processing',
-          payment_id: paymentIntentId 
+          order_status: 'processing'
         })
         .eq('id', orderId)
         .select()
@@ -57,9 +79,10 @@ export async function POST(req: Request) {
 
       if (updateError) {
         console.error('Error actualizando Supabase:', updateError);
+        return NextResponse.json({ received: true });
       }
 
-      // 2. OBTENER LOS PRODUCTOS PARA EL CORREO
+      // 3. OBTENER LOS PRODUCTOS PARA EL CORREO
       if (updatedOrder) {
         const clientEmailAddress = updatedOrder.customer_email || 'correo_no_registrado@ejemplo.com';
         const clientName = updatedOrder.customer_name || 'Valued Customer';
@@ -68,7 +91,7 @@ export async function POST(req: Request) {
         
         let dbItems: any[] = [];
         
-        // Buscamos los items en order_items (o item_orders como fallback)
+        // Buscamos los items en order_items
         let { data: itemsData } = await supabase.from('order_items').select('*').eq('order_id', orderId);
         
         if (!itemsData || itemsData.length === 0) {
@@ -80,7 +103,7 @@ export async function POST(req: Request) {
           dbItems = itemsData;
         }
 
-        // GENERADOR DE TARJETAS HTML PREMIUM (Para Cliente y Admin)
+        // GENERADOR DE TARJETAS HTML PREMIUM
         let unifiedItemsHtml = '';
         if (dbItems.length > 0) {
           unifiedItemsHtml = dbItems.map((item: any) => {
@@ -97,7 +120,6 @@ export async function POST(req: Request) {
               <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
                 <table width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
-                    <!-- Columna Logo -->
                     <td width="80" valign="top" style="padding-right: 16px;">
                       <div style="width: 80px; height: 80px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center; overflow: hidden; display: table;">
                         <div style="display: table-cell; vertical-align: middle;">
@@ -105,7 +127,6 @@ export async function POST(req: Request) {
                         </div>
                       </div>
                     </td>
-                    <!-- Columna Detalles -->
                     <td valign="top">
                       <a href="${siteUrl}/products/${item.product_id || ''}" style="font-size: 14px; font-weight: 900; color: #111827; text-transform: uppercase; text-decoration: none; display: block; margin-bottom: 10px;">${pName}</a>
                       
@@ -137,11 +158,6 @@ export async function POST(req: Request) {
                         <span style="font-size: 9px; font-weight: 900; color: #d97706; text-transform: uppercase; letter-spacing: 1px;">Extra Comments:</span><br/>
                         <span style="font-size: 11px; font-weight: 600; color: #92400e; font-style: italic;">"${comments}"</span>
                       </div>` : ''}
-
-                      ${logoUrl ? `
-                      <div style="margin-top: 6px;">
-                        <a href="${logoUrl}" target="_blank" style="font-size: 11px; font-weight: 900; color: #2563eb; text-decoration: none;">📎 Download Logo File</a>
-                      </div>` : ''}
                     </td>
                   </tr>
                 </table>
@@ -149,14 +165,14 @@ export async function POST(req: Request) {
             `;
           }).join('');
         } else {
-          unifiedItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red; border-radius: 8px;">⚠️ Error: Detalles visuales en proceso de sincronización.</div>`;
+          unifiedItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red; border-radius: 8px;">⚠️ Error: Detalles de items no encontrados.</div>`;
         }
 
         try {
           // ==========================================
           // CORREO 1: PARA EL CLIENTE
           // ==========================================
-          const clientEmail = await resend.emails.send({
+          await resend.emails.send({
             from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>',
             replyTo: 'gregorick.liriano@gmail.com',
             to: clientEmailAddress, 
@@ -167,7 +183,7 @@ export async function POST(req: Request) {
                   <h1 style="color: #fff; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;">Fieldstone Embroidery</h1>
                 </div>
                 <div style="padding: 30px;">
-                  <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
+                  <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola ${clientName}! Hemos recibido tu pedido por Clover.</h2>
                   <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
                   
                   <div style="margin-bottom: 25px;">
@@ -180,7 +196,7 @@ export async function POST(req: Request) {
                   </div>
 
                   <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; border-left: 4px solid #000;">
-                    <p style="margin: 0; color: #374151; font-size: 14px;"><strong>ID de Transacción Stripe:</strong> <span style="font-family: monospace; font-size: 15px;">${paymentIntentId}</span></p>
+                    <p style="margin: 0; color: #374151; font-size: 14px;"><strong>Clover Payment ID:</strong> <span style="font-family: monospace; font-size: 15px;">${paymentIntentId}</span></p>
                     <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;"><strong>ID de Pedido Interno:</strong> <span style="font-family: monospace; font-size: 15px;">${orderId}</span></p>
                   </div>
                 </div>
@@ -188,23 +204,17 @@ export async function POST(req: Request) {
             `
           });
 
-          if (clientEmail.error) {
-            console.error("Error enviando correo al cliente:", clientEmail.error);
-          } else {
-            console.log(`✅ Recibo detallado enviado al cliente: ${clientEmailAddress}`);
-          }
-
           // ==========================================
           // CORREO 2: PARA EL ADMIN
           // ==========================================
-          const adminEmail = await resend.emails.send({
+          await resend.emails.send({
             from: 'Notificaciones <info@fieldstoneembroidery.com>',
             to: 'gregorick.liriano@gmail.com', 
-            subject: `🚨 NUEVO PEDIDO PAGADO - $${totalToDisplay} (ID: #${shortOrderId})`,
+            subject: `🚨 NUEVO PEDIDO CLOVER - $${totalToDisplay} (ID: #${shortOrderId})`,
             html: `
               <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 2px solid #10b981; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
                 <div style="background-color: #10b981; padding: 20px; text-align: center;">
-                  <h2 style="color: #fff; margin: 0; font-size: 22px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">¡Nuevo Pedido Pagado!</h2>
+                  <h2 style="color: #fff; margin: 0; font-size: 22px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">¡Nuevo Pedido Clover Pagado!</h2>
                 </div>
                 
                 <div style="padding: 24px;">
@@ -226,7 +236,7 @@ export async function POST(req: Request) {
                           <span style="font-size: 14px; font-weight: 700; color: #065f46;">${clientName} (<a href="mailto:${clientEmailAddress}" style="color: #047857;">${clientEmailAddress}</a>)</span>
                         </td>
                         <td>
-                          <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">ID de Transacción Stripe</span><br/>
+                          <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Clover Payment ID</span><br/>
                           <span style="font-size: 14px; font-weight: 700; font-family: monospace; color: #065f46;">${paymentIntentId}</span>
                         </td>
                       </tr>
@@ -245,21 +255,21 @@ export async function POST(req: Request) {
             `
           });
 
-          if (adminEmail.error) {
-            console.error("Error enviando correo al admin:", adminEmail.error);
-          } else {
-            console.log(`✅ Aviso de venta enviado al Admin.`);
-          }
+          console.log(`✅ Correos de Clover enviados correctamente.`);
 
         } catch (emailErr) {
-           console.error("Error crítico ejecutando correos:", emailErr);
+           console.error("Error crítico ejecutando correos Clover:", emailErr);
         }
       }
     }
+
+    return NextResponse.json({ received: true });
+  } catch (err: any) {
+    console.error(`Error general en Webhook Clover: ${err.message}`);
+    return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 500 });
   }
-  return NextResponse.json({ received: true });
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "Activo" });
+  return NextResponse.json({ status: "Clover Webhook Activo" });
 }

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-// Inicializamos Stripe con tu clave secreta
+// Inicializamos Stripe con tu clave secreta y la versión correcta
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2023-10-16',
+  apiVersion: '2026-02-25.clover',
 });
 
 export async function POST(req: Request) {
