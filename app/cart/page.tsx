@@ -59,8 +59,8 @@ export default function CartPage() {
                   <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center border-b border-gray-100 pb-8 group/row">
                     
                     <div className="col-span-1 md:col-span-6 flex gap-6 items-center">
-                      {/* IMAGEN DEL PRODUCTO + MINIATURA DEL LOGO */}
-                      <Link href={`/products/${item.productId}`} className="w-28 h-36 bg-[#F3F3F3] rounded-3xl p-4 flex-shrink-0 relative overflow-hidden group-hover/row:border-gray-200 border border-gray-100 shadow-inner transition-colors">
+                      {/* ✅ IMAGEN DEL PRODUCTO LINKEADA AL SLUG */}
+                      <Link href={`/products/${item.slug}`} className="w-28 h-36 bg-[#F3F3F3] rounded-3xl p-4 flex-shrink-0 relative overflow-hidden group-hover/row:border-gray-200 border border-gray-100 shadow-inner transition-colors">
                         <img 
                           src={item.image} 
                           alt={item.title} 
@@ -80,7 +80,8 @@ export default function CartPage() {
                       {/* DETALLES TÉCNICOS DEL PRODUCTO */}
                       <div className="flex-1">
                         <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-1">SanMar Catalog</span>
-                        <Link href={`/products/${item.productId}`} className="text-[14px] font-bold text-black uppercase tracking-tight hover:text-blue-600 transition-colors block mb-2 line-clamp-2 pr-4">
+                        {/* ✅ TÍTULO LINKEADO AL SLUG */}
+                        <Link href={`/products/${item.slug}`} className="text-[14px] font-bold text-black uppercase tracking-tight hover:text-blue-600 transition-colors block mb-2 line-clamp-2 pr-4">
                           {item.title}
                         </Link>
                         
@@ -171,7 +172,7 @@ export default function CartPage() {
 
               <div className="mt-6 flex flex-col items-center justify-center gap-4">
                  <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 text-center">Accepted Payment Methods</p>
-                 <div className="flex items-center gap-4 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
+                 <div className="flex items-center gap-4 opacity-100  hover:opacity-1 transition-all duration-500">
                    <img src="mastercard.png" alt="Mastercard" className="h-6 object-contain" />
                    <img src="stripelogo.png" alt="Stripe" className="h-6 object-contain" />
                    <img src="visa.svg" alt="Visa" className="h-4 object-contain" />

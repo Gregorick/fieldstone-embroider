@@ -255,6 +255,7 @@ function ProductPageContent() {
     addToCart({
       id: `${product.id}-${selectedColor}-${selectedSize}-${decorationMethod}-${selectedLocation}`,
       productId: product.id,
+      slug: product.slug || slug as string,
       title: product.title || product.product_name,
       price: unitPrice,
       quantity: quantity,
@@ -409,7 +410,7 @@ function ProductPageContent() {
                   type="file" 
                   ref={fileInputRef}
                   className="hidden" 
-                  accept=".jpg,.png,.pdf,.ai,.eps" 
+                  accept="image/jpeg, image/png, application/pdf, .ai, .eps" 
                   onChange={handleFileUpload} 
                 />
 
@@ -429,10 +430,34 @@ function ProductPageContent() {
                       <div className="bg-green-100 p-1 rounded-full"><Check size={16} className="text-green-600" /></div>
                       <p className="text-sm text-green-700 font-bold">Logo Uploaded Successfully!</p>
                     </div>
+                    
+                    {/* ✅ CAJA DE PREVISUALIZACIÓN SIN OVERFLOW HIDDEN PARA QUE LA X NO SE CORTE */}
                     <div className="relative w-64 h-64 bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center justify-center">
-                      <img src={uploadedLogo} alt="Logo Preview" className="max-w-full max-h-full object-contain drop-shadow-sm" />
-                      <button onClick={removeLogo} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600 hover:scale-110 transition-all"><X size={14} /></button>
+                      {uploadedLogo.startsWith("data:application/pdf") ? (
+                        <iframe 
+                          src={`${uploadedLogo}#toolbar=0&navpanes=0&scrollbar=0`} 
+                          className="w-full h-full rounded-xl border-none pointer-events-none" 
+                          title="PDF Preview" 
+                        />
+                      ) : uploadedLogo.startsWith("data:image/") ? (
+                        <img 
+                          src={uploadedLogo} 
+                          alt="Logo Preview" 
+                          className="max-w-full max-h-full object-contain drop-shadow-sm rounded-xl" 
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-center p-4">
+                          <Check size={32} className="text-green-500 mb-2" />
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">File Ready</span>
+                        </div>
+                      )}
+                      
+                      {/* Botón X posicionado afuera sin recortes */}
+                      <button onClick={removeLogo} className="absolute -top-3 -right-3 z-20 bg-red-500 text-white p-1.5 rounded-full shadow-md hover:bg-red-600 hover:scale-110 transition-all">
+                        <X size={14} />
+                      </button>
                     </div>
+
                     <button 
                       onClick={() => setIsLegalWarningOpen(true)}
                       className="text-xs text-[#3b5bdb] cursor-pointer hover:underline font-semibold tracking-wide"

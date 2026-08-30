@@ -83,10 +83,17 @@ export default function SlideOutCart() {
                   <div className="flex-1 flex flex-col justify-between py-1">
                     <div>
                       <div className="flex justify-between items-start gap-2">
-                        <h3 className="text-[13px] font-bold text-black uppercase tracking-tight line-clamp-2 leading-tight">
-                          {item.title}
-                        </h3>
-                        <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition-colors p-1" title="Remove Item">
+                        {/* ✅ TÍTULO LINKEADO PURAMENTE AL SLUG */}
+                        <Link 
+                          href={`/products/${item.slug}`} 
+                          onClick={() => setIsCartOpen(false)}
+                          className="hover:opacity-70 transition-opacity"
+                        >
+                          <h3 className="text-[13px] font-bold text-black uppercase tracking-tight line-clamp-2 leading-tight hover:text-blue-600 transition-colors cursor-pointer">
+                            {item.title}
+                          </h3>
+                        </Link>
+                        <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition-colors p-1 flex-shrink-0" title="Remove Item">
                           <Trash2 size={16} />
                         </button>
                       </div>

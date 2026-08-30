@@ -5,13 +5,14 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 export interface CartItem {
   id: string; // ID único del producto (para poder borrarlo)
   productId: string;
+  slug: string; // 🟢 ¡ESTA ES LA LÍNEA QUE FALTABA PARA QUE EL CARRITO GUARDE EL SLUG!
   title: string;
   price: number;
   image: string;
   size: string;
   color: string;
   quantity: number;
-  decorationMethod?: string; // 👇 ¡AÑADE ESTA LÍNEA!
+  decorationMethod?: string;
 }
 
 interface CartContextType {
@@ -20,7 +21,7 @@ interface CartContextType {
   addToCart: (item: CartItem) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
-  clearCart: () => void; // 🚀 1. AGREGAMOS EL TIPO AQUÍ
+  clearCart: () => void;
   setIsCartOpen: (isOpen: boolean) => void;
   cartTotal: number;
   cartCount: number;
@@ -68,7 +69,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  // 🚀 2. CREAMOS LA LÓGICA PARA VACIAR EL CARRITO AQUÍ
   const clearCart = () => {
     setCartItems([]);
   };
@@ -77,7 +77,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const cartCount = cartItems.reduce((count, item) => count + item.quantity, 0);
 
   return (
-    // 🚀 3. EXPORTAMOS LA FUNCIÓN EN EL PROVIDER AQUÍ
     <CartContext.Provider value={{ cartItems, isCartOpen, addToCart, removeFromCart, updateQuantity, clearCart, setIsCartOpen, cartTotal, cartCount }}>
       {children}
     </CartContext.Provider>

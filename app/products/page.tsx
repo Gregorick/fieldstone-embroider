@@ -90,7 +90,6 @@ function ProductsContent() {
   const [selectedBrand, setSelectedBrand] = useState<string>(initialBrand);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]); 
-  const [priceRange, setPriceRange] = useState<number>(150);
 
   // Estados de Listas Dinámicas
   const [dynamicSizes, setDynamicSizes] = useState<{name: string, count: number}[]>([]);
@@ -231,7 +230,6 @@ function ProductsContent() {
 
         if (selectedCategory) query = query.eq("category", selectedCategory);
         if (selectedBrand) query = query.eq("brand", selectedBrand);
-        if (priceRange < 150) query = query.lte("price", priceRange);
 
         if (isDeepFiltering) {
           query = query.in("style", matchingStyles);
@@ -263,11 +261,10 @@ function ProductsContent() {
       }
     }
     fetchProducts();
-  }, [selectedCategory, selectedBrand, selectedSizes, selectedColors, priceRange, currentPage, dynamicColors]);
+  }, [selectedCategory, selectedBrand, selectedSizes, selectedColors, currentPage, dynamicColors]);
 
   const handleCategoryChange = (cat: string) => { setSelectedCategory(cat); setCurrentPage(1); };
   const handleBrandChange = (brand: string) => { setSelectedBrand(brand); setCurrentPage(1); };
-  const handlePriceChange = (e: any) => { setPriceRange(Number(e.target.value)); setCurrentPage(1); };
   
   const toggleSize = (size: string) => {
     setSelectedSizes(prev => prev.includes(size) ? prev.filter(s => s !== size) : [...prev, size]);
@@ -281,7 +278,7 @@ function ProductsContent() {
 
   const clearAllFilters = () => {
     setSelectedCategory(""); setSelectedBrand(""); setSelectedSizes([]); setSelectedColors([]);
-    setPriceRange(150); setCurrentPage(1);
+    setCurrentPage(1);
   };
 
   const getColorGroupCount = (baseColor: string) => {
@@ -340,19 +337,6 @@ function ProductsContent() {
               <button onClick={() => setIsMobileFiltersOpen(false)}><X size={24} /></button>
             </div>
           )}
-
-          <div className="mb-10">
-            <h3 className="text-2xl font-bold text-black mb-4 tracking-tight">Price</h3>
-            <p className="text-[15px] font-medium text-black mb-4">$13.00 - ${priceRange}.00</p>
-            <div className="relative h-2 bg-gray-200 rounded-full flex items-center mt-6">
-              <div className="absolute left-0 -ml-2 w-6 h-6 bg-[#8012d8] rounded-full shadow-md z-10"></div>
-              <input 
-                type="range" min="13" max="150" value={priceRange} 
-                onChange={handlePriceChange}
-                className="absolute w-full appearance-none bg-transparent outline-none z-20 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-[#8012d8] [&::-webkit-slider-thumb]:rounded-full"
-              />
-            </div>
-          </div>
 
           {dynamicSizes.length > 0 && (
             <div className="mb-10">
