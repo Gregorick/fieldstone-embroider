@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     if (orderId) {
       console.log(`Procesando orden ${orderId} con Stripe ID: ${paymentIntentId}`);
       
-      // 1. Actualizamos la orden en Supabase (Removida la columna 'status' que no existe)
+      // 1. Actualizamos la orden en Supabase
       const { data: updatedOrder, error: updateError } = await supabase
         .from('orders')
         .update({ 
@@ -54,7 +54,6 @@ export async function POST(req: Request) {
         .select()
         .single();
 
-      // 🚨 TRAMPA DE DEBUG: Si Supabase falla, le avisamos a Stripe con un error 500
       if (updateError) {
         console.error('Error actualizando Supabase:', updateError);
         return NextResponse.json({ error: "Fallo al actualizar Supabase", details: updateError }, { status: 500 });
@@ -90,7 +89,8 @@ export async function POST(req: Request) {
           const pSize = item.size || '-';
           const pColor = item.color || '';
           const pMethod = item.decoration_method || '-';
-          const pLocation = item.location || '-';
+          // 🟢 ESTE CAMPO AHORA INCLUIRÁ TODAS LAS LOCACIONES (Ej: Loc1 + Loc2 + Loc3)
+          const pLocation = item.location || '-'; 
           const pPrice = Number(item.unit_price).toFixed(2);
           const comments = item.extra_comments || '';
 
@@ -119,13 +119,13 @@ export async function POST(req: Request) {
                         </td>
                       </tr>
                       <tr>
-                        <td valign="top">
+                        <td valign="top" style="padding-right: 8px;">
                           <span style="font-size: 9px; font-weight: 900; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px;">Decoration:</span><br/>
                           <span style="font-size: 12px; font-weight: 800; color: #1f2937;">${pMethod}</span>
                         </td>
                         <td valign="top">
-                          <span style="font-size: 9px; font-weight: 900; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px;">Location:</span><br/>
-                          <span style="font-size: 12px; font-weight: 800; color: #1f2937;">${pLocation}</span>
+                          <span style="font-size: 9px; font-weight: 900; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px;">Locations:</span><br/>
+                          <span style="font-size: 11px; font-weight: 800; color: #1f2937; line-height: 1.4;">${pLocation}</span>
                         </td>
                       </tr>
                     </table>

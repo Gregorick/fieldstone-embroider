@@ -54,7 +54,11 @@ function ProductPageContent() {
   const [quantity, setQuantity] = useState<number>(1);
   const [decorationMethod, setDecorationMethod] = useState<"emb" | "sp" | "">("");
   
-  const [selectedLocation, setSelectedLocation] = useState<string>("");
+  // 🟢 ESTADOS PARA MÚLTIPLES LOCATIONS
+  const [location1, setLocation1] = useState<string>("");
+  const [location2, setLocation2] = useState<string>("");
+  const [location3, setLocation3] = useState<string>("");
+
   const [extraComments, setExtraComments] = useState<string>("");
   const [validationError, setValidationError] = useState<string | null>(null);
   
@@ -185,8 +189,11 @@ function ProductPageContent() {
     }
   }, [selectedColor, selectedSize, variants]);
 
+  // 🟢 Reiniciar locations si cambia el método de decoración
   useEffect(() => {
-    setSelectedLocation("");
+    setLocation1("");
+    setLocation2("");
+    setLocation3("");
   }, [decorationMethod]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,15 +252,20 @@ function ProductPageContent() {
     if (!selectedSize) return setValidationError("Please select a Size for your product.");
     if (!decorationMethod) return setValidationError("Please select a Decoration Method (Embroidery or Screen Print).");
     if (!uploadedLogo) return setValidationError("Please upload your Custom Logo to proceed.");
-    if (!selectedLocation) return setValidationError("Please select a Logo Location.");
+    
+    // 🟢 Solo el Location 1 es obligatorio
+    if (!location1) return setValidationError("Please select a Primary Logo Location.");
 
     if (isQuote) {
       alert("Redirecting to Quote Form...");
       return;
     }
     
+    // 🟢 Combinar todas las locaciones seleccionadas en un solo String para la base de datos
+    const combinedLocations = [location1, location2, location3].filter(Boolean).join(" + ");
+
     addToCart({
-      id: `${product.id}-${selectedColor}-${selectedSize}-${decorationMethod}-${selectedLocation}`,
+      id: `${product.id}-${selectedColor}-${selectedSize}-${decorationMethod}-${location1}`,
       productId: product.id,
       slug: product.slug || slug as string,
       title: product.title || product.product_name,
@@ -264,7 +276,7 @@ function ProductPageContent() {
       color: selectedColor,
       decorationMethod: decorationMethod.toUpperCase(),
       // @ts-expect-error
-      location: selectedLocation,
+      location: combinedLocations,
       extraComments: extraComments
     });
     setIsCartOpen(true);
@@ -288,7 +300,6 @@ function ProductPageContent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
           
-          {/* CONTENEDOR DE IMAGEN (FIJO SOLO EN DESKTOP CON LG:STICKY, NORMAL EN MÓVIL) */}
           <div className="lg:col-span-6 lg:sticky lg:top-24">
             <div className="w-full h-[60vh] aspect-[4/5] bg-[#F3F3F3] rounded-[3rem] overflow-hidden p-10 flex items-center justify-center relative border border-gray-100 shadow-inner">
               <img 
@@ -431,7 +442,6 @@ function ProductPageContent() {
                       <p className="text-sm text-green-700 font-bold">Logo Uploaded Successfully!</p>
                     </div>
                     
-                    {/* ✅ CAJA DE PREVISUALIZACIÓN SIN OVERFLOW HIDDEN PARA QUE LA X NO SE CORTE */}
                     <div className="relative w-64 h-64 bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center justify-center">
                       {uploadedLogo.startsWith("data:application/pdf") ? (
                         <iframe 
@@ -452,7 +462,6 @@ function ProductPageContent() {
                         </div>
                       )}
                       
-                      {/* Botón X posicionado afuera sin recortes */}
                       <button onClick={removeLogo} className="absolute -top-3 -right-3 z-20 bg-red-500 text-white p-1.5 rounded-full shadow-md hover:bg-red-600 hover:scale-110 transition-all">
                         <X size={14} />
                       </button>
@@ -465,16 +474,67 @@ function ProductPageContent() {
                       Replace File
                     </button>
 
+                    {/* 🟢 PRIMER LOCATION (OBLIGATORIO) */}
                     <div className="w-full mt-6 text-left border-t border-gray-200 pt-6">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Select Logo Location *</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Primary Logo Location *</label>
                       <div className="relative">
-                        <select value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)} className="w-full p-4 text-sm font-bold text-black bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all appearance-none cursor-pointer">
-                          <option value="" disabled>Select a location...</option>
+                        <select 
+                          value={location1} 
+                          onChange={(e) => {
+                            setLocation1(e.target.value);
+                            // Reiniciar subsecuentes si se cambia el primero
+                            if (e.target.value === location2) setLocation2("");
+                            if (e.target.value === location3) setLocation3("");
+                          }} 
+                          className="w-full p-4 text-sm font-bold text-black bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="" disabled>Select a primary location...</option>
                           {availableLocations.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
                         </select>
                         <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>
                     </div>
+
+                    {/* 🟢 SEGUNDO LOCATION (Opcional - Embroidery o Screen Print) */}
+                    {location1 && (decorationMethod === "emb" || decorationMethod === "sp") && availableLocations.length > 1 && (
+                      <div className="w-full mt-4 text-left animate-in fade-in slide-in-from-top-2 duration-300">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Second Logo Location (Optional)</label>
+                        <div className="relative">
+                          <select 
+                            value={location2} 
+                            onChange={(e) => {
+                              setLocation2(e.target.value);
+                              if (e.target.value === location3) setLocation3("");
+                            }} 
+                            className="w-full p-4 text-sm font-bold text-black bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
+                          >
+                            <option value="">None</option>
+                            {/* Filtrar el seleccionado en el primer dropdown */}
+                            {availableLocations.filter(loc => loc !== location1).map(loc => (<option key={loc} value={loc}>{loc}</option>))}
+                          </select>
+                          <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 🟢 TERCER LOCATION (Opcional - Solo para Screen Print) */}
+                    {location2 && decorationMethod === "sp" && availableLocations.length > 2 && (
+                      <div className="w-full mt-4 text-left animate-in fade-in slide-in-from-top-2 duration-300">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Third Logo Location (Optional)</label>
+                        <div className="relative">
+                          <select 
+                            value={location3} 
+                            onChange={(e) => setLocation3(e.target.value)} 
+                            className="w-full p-4 text-sm font-bold text-black bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
+                          >
+                            <option value="">None</option>
+                            {/* Filtrar los ya seleccionados */}
+                            {availableLocations.filter(loc => loc !== location1 && loc !== location2).map(loc => (<option key={loc} value={loc}>{loc}</option>))}
+                          </select>
+                          <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        </div>
+                      </div>
+                    )}
 
                     <div className="w-full mt-4 text-left">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Extra Instructions / Comments (Optional)</label>
