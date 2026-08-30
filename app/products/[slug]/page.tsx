@@ -9,8 +9,6 @@ import Footer from "../../components/Footer";
 import { useCart } from "../../context/CartContext";
 import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus } from "lucide-react";
 
-import sizeChartImg from "@/public/Size_chart.webp";
-
 import placement1 from "@/public/PLACEMENT-GUIDE_Pagina_1.jpg";
 import placement2 from "@/public/PLACEMENT-GUIDE_Pagina_2.jpg";
 import placement3 from "@/public/PLACEMENT-GUIDE_Pagina_3.jpg";
@@ -77,7 +75,6 @@ function ProductPageContent() {
   const [gallery, setGallery] = useState<string[]>([]);
   const [openAccordion, setOpenAccordion] = useState<string | null>(null);
 
-  const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
   const [isPlacementGuideOpen, setIsPlacementGuideOpen] = useState(false);
 
   const DISCLOSURES = [
@@ -375,7 +372,6 @@ function ProductPageContent() {
             <div className="mb-8 pb-8 border-b border-gray-100">
               <div className="flex justify-between items-center mb-3">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Size: <span className="text-black">{selectedSize}</span></label>
-                <button onClick={() => setIsSizeChartOpen(true)} className="text-[9px] font-bold text-gray-400 underline hover:text-black transition-colors cursor-pointer">Size Chart</button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {availableSizes.map(size => (
@@ -623,14 +619,6 @@ function ProductPageContent() {
             <h3 className="text-xl font-black uppercase tracking-tighter text-black mb-2">Missing Information</h3>
             <p className="text-sm font-bold text-gray-500 mb-8">{validationError}</p>
             <button onClick={() => setValidationError(null)} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-[#8012d8] transition-colors">Got it, let's fix it</button>
-          </div>
-        </div>
-      )}
-      {isSizeChartOpen && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="relative w-full max-w-2xl bg-white rounded-3xl p-2 shadow-2xl">
-            <button onClick={() => setIsSizeChartOpen(false)} className="absolute -top-4 -right-4 bg-black text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform z-10"><X size={20} /></button>
-            <div className="w-full h-auto overflow-hidden rounded-2xl"><img src={sizeChartImg.src} alt="Size Measurements Chart" className="w-full h-auto object-contain" /></div>
           </div>
         </div>
       )}

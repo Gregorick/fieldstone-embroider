@@ -465,7 +465,7 @@ function ProductsContent() {
                   <button
                     onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
                     disabled={currentPage === 1}
-                    className="px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] border border-gray-200 rounded-sm disabled:opacity-30 hover:border-black hover:bg-black hover:text-white transition-all"
+                    className="px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] bg-[#8012d8] text-white rounded-sm disabled:opacity-30 disabled:bg-gray-400 hover:bg-black transition-all shadow-sm"
                   >
                     Previous
                   </button>
@@ -475,7 +475,7 @@ function ProductsContent() {
                   <button
                     onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
                     disabled={currentPage === totalPages}
-                    className="px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] border border-gray-200 rounded-sm disabled:opacity-30 hover:border-black hover:bg-black hover:text-white transition-all"
+                    className="px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] bg-[#8012d8] text-white rounded-sm disabled:opacity-30 disabled:bg-gray-400 hover:bg-black transition-all shadow-sm"
                   >
                     Next
                   </button>

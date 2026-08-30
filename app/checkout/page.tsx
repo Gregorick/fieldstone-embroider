@@ -154,7 +154,7 @@ export default function CheckoutPage() {
 
   const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!agreedToTerms) return; // Validación extra de seguridad anti-bot
+    if (!agreedToTerms) return;
 
     setIsProcessing(true);
     setAddressError(null);
@@ -205,7 +205,6 @@ export default function CheckoutPage() {
 
       const orderId = orderResult.orderId;
 
-      // 🚀 RUTA ACTUALIZADA A STRIPE
       const res = await fetch('/fieldstone-embroider/api/create-stripe-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -383,7 +382,6 @@ export default function CheckoutPage() {
                 <div className="border border-gray-200 rounded-xl overflow-hidden p-8 text-center bg-gray-50">
                   <ShieldCheck size={48} className="mx-auto text-green-500 mb-4" />
                   <h3 className="text-sm font-bold text-black mb-2">Secure Payment Authorization</h3>
-                  {/* 🚀 TEXTO ACTUALIZADO A STRIPE */}
                   <p className="text-xs text-gray-500 max-w-md mx-auto">
                     To guarantee your security, Fieldstone Embroidery does not store credit card information. You will be redirected to Stripe's secure vault to complete your purchase.
                   </p>
@@ -415,7 +413,9 @@ export default function CheckoutPage() {
                     </span>
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-[11px] font-bold text-black uppercase tracking-tight line-clamp-1">{item.title}</h3>
+                    <Link href={`/products/${item.slug || item.productId}`}>
+                      <h3 className="text-[11px] font-bold text-black uppercase tracking-tight line-clamp-1 hover:text-[#3b5bdb] transition-colors">{item.title}</h3>
+                    </Link>
                     <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mt-1">
                       {item.size} / {item.color}
                     </p>

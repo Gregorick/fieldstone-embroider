@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Mail, ChevronUp } from "lucide-react";
+import { Mail, ChevronUp, AlertCircle, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 // --- COMPONENTES SVG PARA REDES SOCIALES ---
@@ -64,30 +64,49 @@ export default function Footer() {
   const [honeypot, setHoneypot] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'success'|'error' } | null>(null);
+  
+  // Nuevo estado para el popup de confirmación
+  const [showAuthPopup, setShowAuthPopup] = useState(false);
 
-  const handleSubscribe = async (e: React.FormEvent) => {
+  // Primera fase: Cuando el usuario le da a Subscribe en el form principal
+  const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setMessage(null);
 
+    // Evitar falsos envíos
     if (honeypot.length > 0) {
-      setLoading(false);
-      setMessage({ text: "Thanks for subscribing!", type: 'success' }); // Falso positivo para bots
+      setMessage({ text: "Thanks for subscribing!", type: 'success' });
       return;
     }
 
     if (!termsAccepted) {
       setMessage({ text: "You must agree to the terms.", type: 'error' });
-      setLoading(false);
       return;
     }
 
+    if (!email) return;
+
+    // Si todo está bien, mostrar el Popup
+    setShowAuthPopup(true);
+  };
+
+  // Segunda fase: Confirmación final enviada a Supabase
+  const processSubscription = async (isAuthorized: boolean) => {
+    setLoading(true);
+    setShowAuthPopup(false);
+
     try {
-      const { error } = await supabase.from("newsletter_subscriptions").insert([{ email }]);
+      // 🟢 ASEGÚRATE DE TENER LA COLUMNA 'authorized' (BOOLEAN) EN TU TABLA newsletter_subscriptions
+      const { error } = await supabase.from("newsletter_subscriptions").insert([{ 
+        email, 
+        authorized: isAuthorized 
+      }]);
+
       if (error) {
         if (error.code === '23505') throw new Error("This email is already subscribed.");
         throw error;
       }
+      
       setMessage({ text: "Thanks for subscribing!", type: 'success' });
       setEmail("");
       setTermsAccepted(false);
@@ -99,7 +118,7 @@ export default function Footer() {
   };
 
   return (
-    <footer className="bg-black text-white pt-20 pb-10">
+    <footer className="bg-black text-white pt-20 pb-10 relative">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
           
@@ -107,7 +126,6 @@ export default function Footer() {
             <h4 className="text-[11px] font-black uppercase tracking-[0.4em] mb-8 text-gray-400">Contact Us</h4>
             <div className="text-gray-400 text-xs leading-6 space-y-4 font-medium">
               <p className="text-white font-black tracking-tight text-sm">{contactInfo.companyName}</p>
-              {/* Para que los saltos de línea (\n) introducidos en el admin se rendericen correctamente */}
               <p className="whitespace-pre-line">{contactInfo.address}</p>
               <p className="text-white font-bold"><a href={`mailto:${contactInfo.email}`}>{contactInfo.email}</a></p>
             </div>
@@ -143,7 +161,7 @@ export default function Footer() {
             <h4 className="text-[11px] font-black uppercase tracking-[0.4em] mb-8 text-gray-400">Newsletter</h4>
             <p className="text-gray-400 text-xs mb-6 leading-relaxed font-medium">Subscribe to receive inspiration, ideas & news in your inbox.</p>
             
-            <form className="space-y-4" onSubmit={handleSubscribe}>
+            <form className="space-y-4" onSubmit={handleInitialSubmit}>
               {/* HONEYPOT */}
               <div className="opacity-0 absolute -z-10 w-0 h-0 overflow-hidden" aria-hidden="true">
                 <input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} />
@@ -179,6 +197,38 @@ export default function Footer() {
           <button onClick={scrollToTop} className="md:absolute right-0 bottom-20 p-4 bg-zinc-900 hover:bg-blue-600 text-white transition-all duration-300 group shadow-2xl" title="Scroll to Top"><ChevronUp size={20} className="group-hover:-translate-y-1 transition-transform" /></button>
         </div>
       </div>
+
+      {/* POPUP DE AUTORIZACIÓN PARA NEWSLETTER */}
+      {showAuthPopup && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+              <Mail size={32} className="text-blue-500" />
+            </div>
+            <h3 className="text-xl font-black uppercase tracking-tighter text-black mb-2">Almost Done!</h3>
+            <p className="text-[11px] font-bold text-gray-500 mb-8 uppercase tracking-widest leading-relaxed">
+              By providing your email, do you authorize us to send you marketing communications and promotional offers?
+            </p>
+            <div className="flex w-full gap-3">
+              <button 
+                onClick={() => processSubscription(false)} 
+                className="flex-1 py-4 bg-gray-100 text-gray-600 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                No, Thanks
+              </button>
+              <button 
+                onClick={() => processSubscription(true)} 
+                className="flex-1 py-4 bg-black text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg"
+              >
+                Yes, I Agree
+              </button>
+            </div>
+            <button onClick={() => setShowAuthPopup(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-black">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </footer>
   );
 }

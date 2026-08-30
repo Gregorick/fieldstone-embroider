@@ -9,40 +9,40 @@ export const metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <>
+    <div className="bg-white min-h-screen flex flex-col">
       <Header />
       
-      <main className="max-w-4xl mx-auto px-6 py-16 text-gray-800">
-        <h1 className="text-3xl md:text-4xl font-bold mb-8 text-gray-900 border-b pb-4">
+      <main className="flex-1 w-full max-w-4xl mx-auto px-6 py-16 text-gray-800">
+        <h1 className="text-3xl md:text-4xl font-black mb-8 text-black border-b border-gray-200 pb-4">
           Privacy Policy
         </h1>
 
-        <div className="space-y-6 text-base leading-relaxed">
+        <div className="space-y-6 text-base leading-relaxed font-medium">
           <p>
-            At <strong>Fieldstone Embroidery</strong>, we are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy outlines how we collect, use, and safeguard the data you provide to us when visiting our website or making a purchase.
+            At <strong className="text-black">Fieldstone Embroidery</strong>, we are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy outlines how we collect, use, and safeguard the data you provide to us when visiting our website or making a purchase.
           </p>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900">1. Information We Collect</h2>
+            <h2 className="text-xl font-bold mb-3 text-black">1. Information We Collect</h2>
             <p>
               When you visit our website, request a quote, or place an order, we may collect the following information:
             </p>
             <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li><strong>Personal Information:</strong> Your name, email address, phone number, and billing/shipping address.</li>
-              <li><strong>Order Details:</strong> Information regarding the custom apparel, logos, and specifications you request.</li>
-              <li><strong>Device Information:</strong> Basic analytics such as your IP address, browser type, and operating system to improve our website experience.</li>
+              <li><strong className="text-black">Personal Information:</strong> Your name, email address, phone number, and billing/shipping address.</li>
+              <li><strong className="text-black">Order Details:</strong> Information regarding the custom apparel, logos, and specifications you request.</li>
+              <li><strong className="text-black">Device Information:</strong> Basic analytics such as your IP address, browser type, and operating system to improve our website experience.</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900">2. Payment Processing & Security</h2>
+            <h2 className="text-xl font-bold mb-3 text-black">2. Payment Processing & Security</h2>
             <p>
-              We take your financial security very seriously. All online payments are processed securely through our authorized payment gateway (Clover). <strong>Fieldstone Embroidery does not store, process, or have direct access to your raw credit card numbers.</strong> Your sensitive payment data is encrypted and handled directly by the payment processor in compliance with strict PCI-DSS standards.
+              We take your financial security very seriously. All online payments are processed securely through our authorized payment gateway (Clover). <strong className="text-black">Fieldstone Embroidery does not store, process, or have direct access to your raw credit card numbers.</strong> Your sensitive payment data is encrypted and handled directly by the payment processor in compliance with strict PCI-DSS standards.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900">3. How We Use Your Information</h2>
+            <h2 className="text-xl font-bold mb-3 text-black">3. How We Use Your Information</h2>
             <p>
               The information we collect is strictly used to provide and improve our services to you. We use your data to:
             </p>
@@ -55,9 +55,9 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900">4. Sharing Your Information</h2>
+            <h2 className="text-xl font-bold mb-3 text-black">4. Sharing Your Information</h2>
             <p>
-              <strong>We do not sell, rent, or trade your personal information to third parties.</strong> We only share necessary information with trusted third-party service providers who assist us in operating our business, such as:
+              <strong className="text-black">We do not sell, rent, or trade your personal information to third parties.</strong> We only share necessary information with trusted third-party service providers who assist us in operating our business, such as:
             </p>
             <ul className="list-disc pl-6 mt-2 space-y-1">
               <li>Shipping carriers (e.g., USPS, UPS, FedEx) to deliver your orders.</li>
@@ -69,26 +69,26 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900">5. Your Consent and Rights</h2>
+            <h2 className="text-xl font-bold mb-3 text-black">5. Your Consent and Rights</h2>
             <p>
               By using our website and placing an order, you consent to the collection and use of your information as described in this policy. If you would like to request the deletion of your personal data or have questions about what information we have on file, please reach out to us directly.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900">6. Contact Us</h2>
+            <h2 className="text-xl font-bold mb-3 text-black">6. Contact Us</h2>
             <p>
               If you have any questions or concerns regarding this Privacy Policy or how your data is handled, please contact us at:
             </p>
-            <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
-              <p><strong>Email:</strong> dmarra@fieldstoneembroidery.com</p>
-              <p><strong>Phone:</strong> +1 (978) 219-9071</p>
+            <div className="mt-3 p-5 bg-gray-50 rounded-xl border border-gray-200 text-sm">
+              <p><strong className="text-black">Email:</strong> customerservice@fieldstoneembroidery.com</p>
+              <p><strong className="text-black">Phone:</strong> +1 (978) 219-9071</p>
             </div>
           </section>
         </div>
       </main>
 
       <Footer />
-    </>
+    </div>
   );
 }

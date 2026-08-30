@@ -56,7 +56,6 @@ export default function AdminDashboard() {
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
 
-  // ESTADOS DEL FOOTER
   const [footerData, setFooterData] = useState({
     companyName: "Fieldstone Embroidery Store",
     address: "Santo Domingo, Distrito Nacional\nDominican Republic",
@@ -189,6 +188,41 @@ export default function AdminDashboard() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const exportNewsletterToCSV = () => {
+    const authorizedSubscribers = newsletterForms.filter(sub => sub.authorized === true);
+    if (authorizedSubscribers.length === 0) {
+      return alert("No authorized subscribers to export.");
+    }
+    exportToCSV(authorizedSubscribers, 'newsletter_authorized_subscribers.csv', [
+      {header: 'Date', key: 'created_at'}, 
+      {header: 'Email', key: 'email'}
+    ]);
+  };
+
+  // 🟢 FUNCIÓN PARA ELIMINAR MENSAJES DE CONTACTO
+  const deleteContactMessage = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this message?")) return;
+    try {
+      const { error } = await supabase.from("contact_submissions").delete().eq("id", id);
+      if (error) throw error;
+      setContactForms(prev => prev.filter(msg => msg.id !== id));
+    } catch (err: any) {
+      alert("Error deleting message: " + err.message);
+    }
+  };
+
+  // 🟢 FUNCIÓN PARA ELIMINAR SUSCRIPTORES DEL NEWSLETTER
+  const deleteNewsletterSubscriber = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this subscriber?")) return;
+    try {
+      const { error } = await supabase.from("newsletter_subscriptions").delete().eq("id", id);
+      if (error) throw error;
+      setNewsletterForms(prev => prev.filter(sub => sub.id !== id));
+    } catch (err: any) {
+      alert("Error deleting subscriber: " + err.message);
+    }
   };
 
   const handleOpenOrder = (order: any) => {
@@ -474,7 +508,7 @@ export default function AdminDashboard() {
         
         <div className="p-6 border-b border-gray-800 flex items-center gap-4">
            <div className="w-10 h-10 rounded-full bg-gray-700 overflow-hidden border-2 border-gray-600 flex-shrink-0">
-             {profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400" />}
+             {profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="avatar" /> : <User className="w-full h-full p-2 text-gray-400" />}
            </div>
            <div>
              <p className="text-xs font-bold uppercase tracking-wider">{profile.first_name || "Admin"}</p>
@@ -963,12 +997,10 @@ export default function AdminDashboard() {
                 </button>
               ) : (
                 <button 
-                  onClick={() => exportToCSV(newsletterForms, 'newsletter_subscribers.csv', [
-                    {header: 'Date', key: 'created_at'}, {header: 'Email', key: 'email'}
-                  ])}
+                  onClick={exportNewsletterToCSV} // 🟢 USAMOS LA NUEVA FUNCIÓN AQUI
                   className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"
                 >
-                  <Download size={14} /> Export Subscribers to CSV
+                  <Download size={14} /> Export Authorized to CSV
                 </button>
               )}
             </div>
@@ -992,15 +1024,11 @@ export default function AdminDashboard() {
               <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                      <th className="p-6">Date</th>
-                      <th className="p-6">Sender Details</th>
-                      <th className="p-6">Message</th>
-                    </tr>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500"><th className="p-6">Date</th><th className="p-6">Sender Details</th><th className="p-6">Message</th><th className="p-6 text-right">Actions</th></tr>
                   </thead>
                   <tbody>
                     {paginatedContacts.length === 0 ? (
-                      <tr><td colSpan={3} className="p-8 text-center text-gray-500 text-sm font-medium">No messages found.</td></tr>
+                      <tr><td colSpan={4} className="p-8 text-center text-gray-500 text-sm font-medium">No messages found.</td></tr>
                     ) : (
                       paginatedContacts.map(form => (
                         <tr key={form.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -1014,6 +1042,9 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-6 align-top max-w-lg">
                             <p className="text-sm font-medium text-gray-700 whitespace-pre-wrap">{form.message}</p>
+                          </td>
+                          <td className="p-6 align-top text-right">
+                            <button onClick={() => deleteContactMessage(form.id)} className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors shadow-sm" title="Delete Message"><Trash2 size={16} /></button>
                           </td>
                         </tr>
                       ))
@@ -1052,17 +1083,16 @@ export default function AdminDashboard() {
             )}
 
             {activeFormTab === "newsletters" && (
-              <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden max-w-3xl">
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden max-w-4xl">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                      <th className="p-6">Subscribed Date</th>
-                      <th className="p-6">Email Address</th>
+                      <th className="p-6">Subscribed Date</th><th className="p-6">Email Address</th><th className="p-6 text-center">Authorized</th><th className="p-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedNewsletters.length === 0 ? (
-                      <tr><td colSpan={2} className="p-8 text-center text-gray-500 text-sm font-medium">No subscribers found.</td></tr>
+                      <tr><td colSpan={4} className="p-8 text-center text-gray-500 text-sm font-medium">No subscribers found.</td></tr>
                     ) : (
                       paginatedNewsletters.map(sub => (
                         <tr key={sub.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -1071,6 +1101,14 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-6">
                             <p className="text-sm font-bold text-black">{sub.email}</p>
+                          </td>
+                          <td className="p-6 text-center">
+                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${sub.authorized ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {sub.authorized ? "YES" : "NO"}
+                            </span>
+                          </td>
+                          <td className="p-6 text-right">
+                            <button onClick={() => deleteNewsletterSubscriber(sub.id)} className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors shadow-sm" title="Delete Subscriber"><Trash2 size={16} /></button>
                           </td>
                         </tr>
                       ))
@@ -1223,7 +1261,7 @@ export default function AdminDashboard() {
                           <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Size / Color:</span><p className="text-xs font-bold text-gray-900">{item.size} / {item.color}</p></div>
                           <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Qty & Price:</span><p className="text-xs font-bold text-gray-900">{item.quantity} x ${Number(item.unit_price).toFixed(2)}</p></div>
                           <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Decoration:</span><p className="text-xs font-bold text-gray-900">{item.decoration_method}</p></div>
-                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Location:</span><p className="text-xs font-bold text-gray-900">{item.location}</p></div>
+                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Locations:</span><p className="text-xs font-bold text-gray-900">{item.location}</p></div>
                         </div>
                       </div>
                     </div>
@@ -1308,4 +1346,4 @@ export default function AdminDashboard() {
 
     </div>
   );
-}
+} 
