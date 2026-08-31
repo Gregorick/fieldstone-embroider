@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import logoImg from '@/public/logo.png';
 import Link from "next/link";
-import { Search, ShoppingBag, User, ChevronRight, X, ArrowRight, Upload, Grip, Menu } from "lucide-react";
+import { Search, ShoppingBag, User, ChevronRight, X, ArrowRight, Upload, Grip, Menu, Check, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "../context/CartContext";
 
-// --- IMPORTACIONES DE LOGOS (Brands) ---
+// --- IMPORTACIONES DE LOGOS EXACTAS (Sin modificaciones) ---
 import logoA4 from "@/public/brands/mvp-brand-icon-a4.svg";
 import logoAllmade from "@/public/brands/mvp-brand-icon-allmade.svg";
 import logoBellaCanvas from "@/public/brands/mvp-brand-icon-bella-canvas.svg";
@@ -45,22 +45,54 @@ import logoTravisMathew from "@/public/brands/mvp-brand-icon-travismathew.svg";
 import logoVolunteerKnitwear from "@/public/brands/mvp-brand-icon-volonteer-knitwear.svg";
 import logoWink from "@/public/brands/mvp-brand-icon-wink.svg";
 
+// --- MAPEO ALFANUMÉRICO ESTRICTO ---
+// Las claves están sin espacios, mayúsculas ni símbolos para que encajen perfecto con lo que mande Supabase.
 const brandImagesMap: Record<string, any> = {
-  "A4": logoA4, "Allmade": logoAllmade, "BELLA+CANVAS": logoBellaCanvas, "Brooks Brothers": logoBrooksBrothers,
-  "Bulwark": logoBulwark, "Carhartt": logoCarhartt, "Champion": logoChampion, "Comfort Colors": logoComfortColors,
-  "CornerStone": logoCornerstone, "Cotopaxi": logoCotopaxi, "District": logoDistrict, "Eddie Bauer": logoEddieBauer,
-  "Gildan": logoGildan, "Jerzees": logoJerzees, "Mercer+Mettle": logoMercerMettle, "New Era": logoNewEra,
-  "Next Level Apparel": logoNextLevel, "Nike": logoNike, "OGIO": logoOgio, "Outdoor Research": logoOutdoorResearch,
-  "Port & Co": logoPortCo, "Port Authority": logoPortAuthority, "Rabbit Skins": logoRabbitSkins, "Red Kap": logoRedKap,
-  "Richardson": logoRichardson, "Russell Outdoors": logoRussellOutdoors, "Spacecraft": logoSpacecraft,
-  "Sport-Tek": logoSportTek, "Stanley/Stella": logoStanleyStella, "tentree": logoTentree, "The North Face": logoTheNorthFace,
-  "Tommy Bahama": logoTommyBahama, "TravisMathew": logoTravisMathew, "Volunteer Knitwear": logoVolunteerKnitwear, "Wink": logoWink
+  "a4": logoA4,
+  "allmade": logoAllmade,
+  "alternativeapparel": null,
+  "anvil": null,
+  "bellacanvas": logoBellaCanvas,
+  "brooksbrothers": logoBrooksBrothers,
+  "bulwark": logoBulwark,
+  "canvasforgood": null,
+  "carhartt": logoCarhartt,
+  "champion": logoChampion,
+  "comfortcolors": logoComfortColors,
+  "cornerstone": logoCornerstone,
+  "cotopaxi": logoCotopaxi,
+  "district": logoDistrict,
+  "eddiebauer": logoEddieBauer,
+  "fruitoftheloom": null,
+  "gildan": logoGildan,
+  "jerzees": logoJerzees,
+  "mercermettle": logoMercerMettle,
+  "newera": logoNewEra,
+  "nextlevelapparel": logoNextLevel,
+  "nike": logoNike,
+  "ogio": logoOgio,
+  "outdoorresearch": logoOutdoorResearch,
+  "portco": logoPortCo,
+  "portauthority": logoPortAuthority,
+  "rabbitskins": logoRabbitSkins,
+  "redkap": logoRedKap,
+  "richardson": logoRichardson,
+  "russelloutdoors": logoRussellOutdoors,
+  "spacecraft": logoSpacecraft,
+  "sporttek": logoSportTek,
+  "stanleystella": logoStanleyStella,
+  "tentree": logoTentree,
+  "thenorthface": logoTheNorthFace,
+  "tommybahama": logoTommyBahama,
+  "travismathew": logoTravisMathew,
+  "volunteerknitwear": logoVolunteerKnitwear,
+  "wink": logoWink
 };
 
 export default function Header() {
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isBrandMenuOpen, setIsBrandMenuOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // NUEVO ESTADO MÓVIL
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   const [allBrands, setAllBrands] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -84,56 +116,29 @@ export default function Header() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  
   const [uploadedLogo, setUploadedLogo] = useState<string | null>(null);
+  const [isLegalWarningOpen, setIsLegalWarningOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [allowedCategories, setAllowedCategories] = useState<string[]>([]);
   const [allowedBrands, setAllowedBrands] = useState<string[]>([]);
 
-  // ORDEN PRIORITARIO SOLICITADO
-  const priorityCategories = [
-    "Caps", 
-    "T-Shirts", 
-    "Polo/Knits", 
-    "Bags", 
-    "Sweatshirts/Fleece", 
-    "Womens"
-  ];
-
   useEffect(() => {
     async function loadHeaderData() {
-      let localAllowedCats: string[] = [];
-      let localAllowedBrands: string[] = [];
       const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
       
       if (settings) {
-        localAllowedCats = settings.visible_categories || [];
-        localAllowedBrands = settings.visible_brands || [];
-        setAllowedCategories(localAllowedCats);
-        setAllowedBrands(localAllowedBrands);
-      }
-
-      const { data: catData } = await supabase.rpc("get_unique_categories");
-      if (catData) {
-        let uniqueCats = catData.map((item: any) => item.category_name);
-        if (localAllowedCats.length > 0) {
-          uniqueCats = uniqueCats.filter((c: string) => localAllowedCats.includes(c));
-        }
-
-        uniqueCats.sort((a: string, b: string) => {
-          const indexA = priorityCategories.findIndex(p => p.toLowerCase() === a.toLowerCase());
-          const indexB = priorityCategories.findIndex(p => p.toLowerCase() === b.toLowerCase());
-          
-          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-          if (indexA !== -1) return -1;
-          if (indexB !== -1) return 1;
-          return a.localeCompare(b);
-        });
-
-        setCategories(uniqueCats);
+        const orderedCats = settings.visible_categories || [];
+        const orderedBrands = settings.visible_brands || [];
+        
+        setAllowedCategories(orderedCats);
+        setAllowedBrands(orderedBrands);
+        setCategories(orderedCats);
+        setAllBrands(orderedBrands);
 
         const imgMap: Record<string, string> = {};
-        const imagePromises = uniqueCats.map(async (cat: string) => {
+        const imagePromises = orderedCats.map(async (cat: string) => {
           const { data } = await supabase
             .from("products_unique_styles")
             .select("image_url")
@@ -148,14 +153,6 @@ export default function Header() {
         await Promise.all(imagePromises);
         setCategoryImages(imgMap);
       }
-
-      let uniqueBrands = Object.keys(brandImagesMap);
-      
-      if (localAllowedBrands.length > 0) {
-        uniqueBrands = uniqueBrands.filter(b => localAllowedBrands.includes(b));
-      }
-      
-      setAllBrands(uniqueBrands.sort());
     }
 
     loadHeaderData();
@@ -201,11 +198,14 @@ export default function Header() {
       const { data } = await supabase.from("products_unique_styles").select("id, slug, brand, image_url, title").eq("category", activeCategory).limit(100);
       
       if (data) {
-        let uniqueBrands = Array.from(new Set(data.map((item) => item.brand))) as string[];
+        let uniqueBrandsInCat = Array.from(new Set(data.map((item) => item.brand))) as string[];
         if (allowedBrands.length > 0) {
-          uniqueBrands = uniqueBrands.filter(b => allowedBrands.includes(b));
+          // Filtramos ignorando mayúsculas/minúsculas para no perder marcas
+          uniqueBrandsInCat = allowedBrands.filter(ab => 
+            uniqueBrandsInCat.some(ub => ub?.toLowerCase() === ab?.toLowerCase())
+          );
         }
-        setSubCategories(uniqueBrands.slice(0, 8)); 
+        setSubCategories(uniqueBrandsInCat.slice(0, 8)); 
         
         const uniqueImageProducts = [];
         const seenImages = new Set();
@@ -236,9 +236,19 @@ export default function Header() {
           .from("products_unique_styles")
           .select("id, slug, title, style, image_url, brand, category")
           .or(`title.ilike.%${safeQuery}%,style.ilike.%${safeQuery}%,brand.ilike.%${safeQuery}%,category.ilike.%${safeQuery}%`)
-          .limit(10);
+          .limit(30);
+          
         if (error) throw error;
-        if (data) setSearchResults(data);
+        
+        if (data) {
+          // Excluimos resultados de marcas o categorías que están apagadas en el admin
+          const validResults = data.filter((item) => {
+            const isBrandValid = allowedBrands.length === 0 || allowedBrands.some(b => b.toLowerCase() === item.brand?.toLowerCase());
+            const isCatValid = allowedCategories.length === 0 || allowedCategories.some(c => c.toLowerCase() === item.category?.toLowerCase());
+            return isBrandValid && isCatValid;
+          });
+          setSearchResults(validResults.slice(0, 10));
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -246,9 +256,8 @@ export default function Header() {
       }
     }, 400);
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [searchQuery, allowedBrands, allowedCategories]);
 
-  // BLOQUEO DE SCROLL CUANDO MODALES/MENÚS ESTÁN ABIERTOS
   useEffect(() => {
     if (isSearchOpen || isMobileMenuOpen) {
       document.body.style.overflow = "hidden";
@@ -263,11 +272,23 @@ export default function Header() {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setUploadedLogo(base64String);
-        localStorage.setItem("user_custom_logo", base64String);
+        const dataUrl = reader.result as string;
+        setUploadedLogo(dataUrl);
+        localStorage.setItem("user_custom_logo", dataUrl);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const removeLogo = () => {
+    setUploadedLogo(null);
+    localStorage.removeItem("user_custom_logo");
+  };
+
+  const handleAcceptLegalWarning = () => {
+    setIsLegalWarningOpen(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
 
@@ -292,7 +313,6 @@ export default function Header() {
         <div className="container mx-auto px-4 flex items-center justify-between relative min-h-[65px]">
           
           <div className="relative z-50 flex items-center h-full gap-3">
-            {/* BOTÓN HAMBURGUESA (MÓVIL) */}
             <button 
               className="md:hidden p-1 -ml-1 text-black hover:text-[#8012d8] transition-colors"
               onClick={() => setIsMobileMenuOpen(true)}
@@ -313,14 +333,12 @@ export default function Header() {
           </div>
 
           <nav className="hidden md:flex items-center gap-8 mx-auto h-full z-10">
-            {/* SHOP / PRODUCTS */}
             <div onMouseEnter={handleOpenProductsMenu} className="h-full cursor-pointer flex items-center">
               <Link href="/products" onClick={() => setIsMegaMenuOpen(false)} className="text-[12px] tracking-widest font-bold text-black hover:text-[#8012d8] py-5 block h-full flex items-center uppercase">
                 Products
               </Link>
             </div>
             
-            {/* BRANDS */}
             <div onMouseEnter={() => { setIsBrandMenuOpen(true); setIsMegaMenuOpen(false); }} className="h-full cursor-pointer flex items-center">
               <span className="text-[12px] tracking-widest font-bold text-black hover:text-[#8012d8] py-5 block cursor-pointer">BRANDS</span>
             </div>
@@ -330,16 +348,43 @@ export default function Header() {
           </nav>
 
           <div className="flex items-center gap-4 z-50" onMouseEnter={() => { setIsMegaMenuOpen(false); setIsBrandMenuOpen(false); }}>
+            
             <div className="hidden lg:flex items-center gap-3 border-r border-gray-200 pr-4 mr-2">
-              <input type="file" accept="image/png, image/jpeg, image/svg+xml" className="hidden" ref={fileInputRef} onChange={handleLogoUpload} />
+              <input 
+                type="file" 
+                accept="image/png, image/jpeg, application/pdf, .ai, .eps" 
+                className="hidden" 
+                ref={fileInputRef} 
+                onChange={handleLogoUpload} 
+              />
+              
               {uploadedLogo ? (
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Your Logo:</span>
-                  <div className="w-8 h-8 rounded-md border border-gray-200 p-1 flex items-center justify-center bg-gray-50 shadow-sm overflow-hidden"><img src={uploadedLogo} alt="Logo" className="w-full h-full object-contain" /></div>
-                  <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 bg-black text-white text-[9px] font-black uppercase tracking-widest rounded-md hover:bg-[#8012d8] hover:!text-white transition-colors shadow-sm">Change Logo</button>
+                  
+                  <div className="relative w-8 h-8 rounded-md border border-gray-200 p-1 flex items-center justify-center bg-gray-50 shadow-sm overflow-hidden group">
+                    {uploadedLogo.startsWith("data:application/pdf") ? (
+                      <iframe src={`${uploadedLogo}#toolbar=0&navpanes=0&scrollbar=0`} className="w-full h-full rounded border-none pointer-events-none" title="PDF Preview" />
+                    ) : uploadedLogo.startsWith("data:image/") ? (
+                      <img src={uploadedLogo} alt="Logo" className="w-full h-full object-contain" />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center p-1">
+                        <Check size={12} className="text-green-500" />
+                      </div>
+                    )}
+                    
+                    <button 
+                      onClick={removeLogo} 
+                      className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={14} className="text-white" />
+                    </button>
+                  </div>
+                  
+                  <button onClick={() => setIsLegalWarningOpen(true)} className="px-3 py-1.5 bg-black text-white text-[9px] font-black uppercase tracking-widest rounded-md hover:bg-[#8012d8] transition-colors shadow-sm">Change Logo</button>
                 </div>
               ) : (
-                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-black text-[10px] font-black uppercase tracking-widest rounded-lg hover:border-black transition-colors"><Upload size={14} /> Upload Logo</button>
+                <button onClick={() => setIsLegalWarningOpen(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-black text-[10px] font-black uppercase tracking-widest rounded-lg hover:border-black transition-colors"><Upload size={14} /> Upload Logo</button>
               )}
             </div>
 
@@ -378,7 +423,6 @@ export default function Header() {
           </div>
         </div>
 
-        {/* --- MENÚ LATERAL MÓVIL (DRAWER) --- */}
         <div 
           className={`fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? "opacity-100 visible" : "opacity-0 invisible"}`} 
           onClick={() => setIsMobileMenuOpen(false)} 
@@ -386,7 +430,6 @@ export default function Header() {
         
         <div className={`fixed top-0 left-0 h-full w-[85%] max-w-[340px] bg-white z-[200] transform transition-transform duration-300 ease-in-out flex flex-col shadow-2xl md:hidden ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
             
-            {/* Header del Drawer */}
             <div className="flex items-center justify-between p-4 border-b border-gray-100 min-h-[65px] bg-white shrink-0">
               <Link href="/" onClick={() => setIsMobileMenuOpen(false)}>
                 <Image src={logoImg} alt="Logo" width={100} height={30} className="object-contain" />
@@ -396,10 +439,7 @@ export default function Header() {
               </button>
             </div>
             
-            {/* Contenido desplazable */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-white">
-               
-               {/* Sección: SHOP */}
                <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-5">Shop Categories</p>
                   <div className="space-y-5">
@@ -412,7 +452,6 @@ export default function Header() {
 
                <div className="w-full h-px bg-gray-100" />
 
-               {/* Sección: BRANDS */}
                <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-5">Top Brands</p>
                   <div className="space-y-5">
@@ -427,7 +466,6 @@ export default function Header() {
 
                <div className="w-full h-px bg-gray-100" />
 
-               {/* Sección: EMPRESA */}
                <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-5">Company</p>
                   <div className="space-y-5">
@@ -437,9 +475,7 @@ export default function Header() {
                </div>
             </div>
 
-            {/* Footer del Drawer (Account & Logo) */}
             <div className="border-t border-gray-100 bg-gray-50 p-6 flex flex-col gap-6 shrink-0">
-               
                <div className="flex items-center justify-between">
                   {user ? (
                      <div className="flex flex-col gap-3 w-full">
@@ -459,17 +495,28 @@ export default function Header() {
 
                <div className="border-t border-gray-200 pt-5">
                   {uploadedLogo ? (
-                    <div className="flex items-center gap-4 bg-white p-3 border border-gray-200 rounded-xl">
-                       <div className="w-10 h-10 rounded-lg p-1 bg-gray-50 flex items-center justify-center shrink-0">
-                          <img src={uploadedLogo} className="w-full h-full object-contain" alt="Custom Logo" />
+                    <div className="flex items-center gap-4 bg-white p-3 border border-gray-200 rounded-xl relative group">
+                       <div className="w-10 h-10 rounded-lg p-1 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                          {uploadedLogo.startsWith("data:application/pdf") ? (
+                            <iframe src={`${uploadedLogo}#toolbar=0&navpanes=0&scrollbar=0`} className="w-full h-full rounded border-none pointer-events-none" title="PDF Preview" />
+                          ) : uploadedLogo.startsWith("data:image/") ? (
+                            <img src={uploadedLogo} className="w-full h-full object-contain" alt="Custom Logo" />
+                          ) : (
+                            <Check size={16} className="text-green-500" />
+                          )}
                        </div>
+                       
+                       <button onClick={removeLogo} className="absolute -top-2 -right-2 z-20 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600 transition-all">
+                          <X size={12} />
+                       </button>
+
                        <div className="flex flex-col">
                           <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Your Artwork</span>
-                          <button onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black text-[#8012d8] uppercase tracking-widest text-left">Upload New</button>
+                          <button onClick={() => setIsLegalWarningOpen(true)} className="text-[10px] font-black text-[#8012d8] uppercase tracking-widest text-left">Upload New</button>
                        </div>
                     </div>
                   ) : (
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-3 text-xs font-black uppercase tracking-widest text-black hover:text-[#8012d8] transition-colors w-full p-3 bg-white border border-gray-200 rounded-xl">
+                    <button onClick={() => setIsLegalWarningOpen(true)} className="flex items-center gap-3 text-xs font-black uppercase tracking-widest text-black hover:text-[#8012d8] transition-colors w-full p-3 bg-white border border-gray-200 rounded-xl">
                       <Upload size={16} /> Upload Custom Logo
                     </button>
                   )}
@@ -477,7 +524,6 @@ export default function Header() {
             </div>
         </div>
 
-        {/* --- MEGA MENU BRANDS (DESKTOP) --- */}
         {isBrandMenuOpen && !isSearchOpen && (
           <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200 p-8 z-[90] max-h-[600px] overflow-y-auto custom-scrollbar hidden md:block">
              <div className="container mx-auto">
@@ -486,17 +532,32 @@ export default function Header() {
                     <button onClick={() => setIsBrandMenuOpen(false)}><X size={20}/></button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
-                    {allBrands.map((brand) => (
-                        <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} onClick={() => setIsBrandMenuOpen(false)} className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors border border-gray-100 hover:border-gray-300">
-                           <img src={brandImagesMap[brand].src} alt={brand} className="h-12 w-full object-contain mix-blend-multiply opacity-70 hover:opacity-100 transition-opacity" />
-                        </Link>
-                    ))}
+                    {allBrands.map((brand) => {
+                        // Limpiamos el nombre de la marca que viene de la base de datos (le quitamos espacios y símbolos)
+                        const normalizedKey = brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : "";
+                        const brandLogo = brandImagesMap[normalizedKey];
+
+                        return (
+                            <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} prefetch={false} onClick={() => setIsBrandMenuOpen(false)} className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors border border-gray-100 hover:border-gray-300">
+                               {brandLogo ? (
+                                   <img 
+                                     src={brandLogo.src} 
+                                     alt={brand} 
+                                     className="h-12 w-full object-contain mix-blend-multiply opacity-70 hover:opacity-100 transition-opacity" 
+                                   />
+                               ) : (
+                                   <span className="h-12 w-full flex items-center justify-center text-[11px] font-black uppercase tracking-tight text-gray-800 text-center">
+                                       {brand}
+                                   </span>
+                               )}
+                            </Link>
+                        );
+                    })}
                 </div>
              </div>
           </div>
         )}
 
-        {/* --- MEGA MENU SHOP (DESKTOP) --- */}
         {isMegaMenuOpen && !isSearchOpen && (
           <div className="absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in fade-in slide-in-from-top-1 duration-200 h-[calc(100vh-65px)] max-h-[850px] z-[90] hidden md:block" onMouseEnter={() => setIsMegaMenuOpen(true)}>
             <div className="container mx-auto flex h-full relative">
@@ -504,7 +565,6 @@ export default function Header() {
                 <X size={24} strokeWidth={1.5} />
               </button>
               
-              {/* SIDEBAR IZQUIERDO */}
               <div className="w-[300px] bg-gray-50 p-8 overflow-y-auto custom-scrollbar h-full flex flex-col">
                 <button 
                   onMouseEnter={() => setViewState("grid")}
@@ -528,10 +588,8 @@ export default function Header() {
                 </ul>
               </div>
 
-              {/* PANEL DERECHO DINÁMICO */}
               <div className="flex-1 flex h-full overflow-y-auto custom-scrollbar relative">
                 
-                {/* VISTA 1: CUADRÍCULA GENERAL */}
                 {viewState === "grid" && (
                   <div className="flex-1 p-12">
                     <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-black italic mb-10">Explore Our Shop</h2>
@@ -541,6 +599,7 @@ export default function Header() {
                         <Link 
                           key={cat} 
                           href={`/products?category=${encodeURIComponent(cat)}`}
+                          prefetch={false}
                           onClick={() => setIsMegaMenuOpen(false)}
                           className="p-4 bg-white border border-gray-100 hover:border-black rounded-3xl transition-all hover:shadow-xl flex flex-col items-center text-center group"
                         >
@@ -566,7 +625,6 @@ export default function Header() {
                   </div>
                 )}
 
-                {/* VISTA 2: DETALLE DE CATEGORÍA CON MINIATURAS */}
                 {viewState === "category" && (
                   <div className="flex-1 p-12 flex flex-col h-full animate-in fade-in duration-300">
                     <h2 className="text-5xl font-black uppercase tracking-tighter text-black mb-10 italic">{activeCategory}</h2>
@@ -577,13 +635,13 @@ export default function Header() {
                         <ul className="grid grid-cols-2 gap-y-4 gap-x-6">
                           {subCategories.map((sub) => (
                             <li key={sub} className="text-xs font-bold text-gray-800 hover:text-[#8012d8] cursor-pointer uppercase truncate">
-                              <Link href={`/products?category=${encodeURIComponent(activeCategory)}&brand=${encodeURIComponent(sub)}`} onClick={() => setIsMegaMenuOpen(false)}>{sub}</Link>
+                              <Link href={`/products?category=${encodeURIComponent(activeCategory)}&brand=${encodeURIComponent(sub)}`} prefetch={false} onClick={() => setIsMegaMenuOpen(false)}>{sub}</Link>
                             </li>
                           ))}
                         </ul>
                         {subCategories.length > 0 && (
                           <div className="mt-6">
-                            <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} onClick={() => setIsMegaMenuOpen(false)} className="text-[10px] font-black text-[#8012d8] hover:text-black uppercase tracking-widest transition-colors flex items-center gap-1">
+                            <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} prefetch={false} onClick={() => setIsMegaMenuOpen(false)} className="text-[10px] font-black text-[#8012d8] hover:text-black uppercase tracking-widest transition-colors flex items-center gap-1">
                               See All Brands <ChevronRight size={12} />
                             </Link>
                           </div>
@@ -593,7 +651,7 @@ export default function Header() {
                         <h3 className="text-[11px] font-black tracking-widest text-gray-400 mb-6 uppercase">Shortcuts</h3>
                         <ul className="space-y-4">
                           <li className="text-xs font-bold text-black border-b-2 border-black inline-block cursor-pointer hover:text-[#8012d8] hover:border-[#8012d8] transition-colors">
-                            <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} onClick={() => setIsMegaMenuOpen(false)}>
+                            <Link href={`/products?category=${encodeURIComponent(activeCategory)}`} prefetch={false} onClick={() => setIsMegaMenuOpen(false)}>
                               VIEW ALL {activeCategory}
                             </Link>
                           </li>
@@ -609,6 +667,7 @@ export default function Header() {
                             <Link 
                               key={idx} 
                               href={`/products/${prod.slug || prod.id}`} 
+                              prefetch={false}
                               onClick={() => setIsMegaMenuOpen(false)}
                               className="group relative aspect-square bg-[#F3F3F3] rounded-2xl overflow-hidden border border-gray-100 hover:border-black hover:shadow-lg transition-all flex items-center justify-center p-4"
                             >
@@ -635,7 +694,6 @@ export default function Header() {
         )}
       </header>
       
-      {/* --- MODAL DE BÚSQUEDA A PANTALLA COMPLETA --- */}
       {isSearchOpen && (
           <div className="fixed inset-0 z-[200] bg-white/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-300">
           <div className="container mx-auto px-4 py-8 flex justify-end">
@@ -691,6 +749,7 @@ export default function Header() {
 
                       <Link 
                         href={`/products/${product.slug || product.id}`} 
+                        prefetch={false}
                         onClick={() => setIsSearchOpen(false)} 
                         className="px-6 py-4 bg-white border-2 border-gray-100 rounded-xl text-[10px] font-black uppercase tracking-widest text-black group-hover:bg-black group-hover:border-black group-hover:text-white transition-all flex items-center gap-2 flex-shrink-0 shadow-sm"
                       >
@@ -705,6 +764,35 @@ export default function Header() {
           </div>
         </div>
       )}
+
+      {isLegalWarningOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+              <ShieldCheck size={32} className="text-red-500" />
+            </div>
+            <h3 className="text-xl font-black uppercase tracking-tighter text-black mb-2">Notice</h3>
+            <p className="text-xs font-bold text-gray-500 mb-8 uppercase tracking-widest leading-relaxed">
+              YOU CONFIRM YOU HAVE LEGAL RIGHT TO USE UPLOADED LOGO. WE WILL CANCEL ORDER IF RIGHTS CANNOT BE ESTABLISHED.
+            </p>
+            <div className="flex w-full gap-3">
+              <button 
+                onClick={() => setIsLegalWarningOpen(false)} 
+                className="flex-1 py-4 bg-gray-100 text-gray-600 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleAcceptLegalWarning} 
+                className="flex-1 py-4 bg-black text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-[#8012d8] transition-colors shadow-lg"
+              >
+                I Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 }

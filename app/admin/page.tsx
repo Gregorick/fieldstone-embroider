@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { 
   LayoutDashboard, ShoppingBag, FolderTree, User, Users, UserPlus,
-  LogOut, Search, Eye, Edit, Check, X, Camera, Save, Lock,
-  Package, ChevronDown, Download, BarChart3, Trash2, DollarSign, Truck,
-  ChevronLeft, ChevronRight, BellRing, ArrowUpRight, Send, AlertTriangle,
+  LogOut, Search, Eye, Check, X, Camera, Save, Lock, Grip,
+  Package, Download, BarChart3, Trash2, DollarSign, Truck,
+  ChevronLeft, ChevronRight, BellRing, Send, AlertTriangle,
   MessageSquare, PanelBottom 
 } from "lucide-react";
 
@@ -47,10 +47,14 @@ export default function AdminDashboard() {
   const [pendingStatusChange, setPendingStatusChange] = useState<{order: any, newStatus: string} | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
+  // --- SHOP FILTERS & DRAG AND DROP STATES ---
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [visibleCategories, setVisibleCategories] = useState<string[]>([]);
   const [allBrands, setAllBrands] = useState<string[]>([]);
   const [visibleBrands, setVisibleBrands] = useState<string[]>([]);
+
+  const [draggingCatIndex, setDraggingCatIndex] = useState<number | null>(null);
+  const [draggingBrandIndex, setDraggingBrandIndex] = useState<number | null>(null);
 
   const [feeThreshold, setFeeThreshold] = useState<number>(300);
   const [feeAmount, setFeeAmount] = useState<number>(65);
@@ -77,16 +81,38 @@ export default function AdminDashboard() {
   const [currentFormPage, setCurrentFormPage] = useState(1);
   const formsPerPage = 20;
 
-  useEffect(() => {
-    setMounted(true);
-    checkAdminAndLoadData();
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await fetch('/fieldstone-embroider/api/admin-data?type=orders');
+      const { data } = await res.json();
+      if (data) {
+        setOrders(data);
+        const viewedIds = JSON.parse(localStorage.getItem("viewed_order_ids") || "[]");
+        const freshOrders = data.filter((o: any) => !viewedIds.includes(o.id));
+        setUnseenOrders(freshOrders);
+      }
+    } catch (err) { console.error(err); }
   }, []);
 
-  useEffect(() => {
-    setCurrentFormPage(1);
-  }, [activeFormTab]);
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch('/fieldstone-embroider/api/admin-data?type=users');
+      const { data } = await res.json();
+      if (data) setUsersList(data);
+    } catch (err) { console.error(err); }
+  }, []);
 
-  async function checkAdminAndLoadData() {
+  const fetchFormsData = useCallback(async () => {
+    try {
+      const { data: contacts } = await supabase.from("contact_submissions").select("*").order("created_at", { ascending: false });
+      if (contacts) setContactForms(contacts);
+
+      const { data: newsletters } = await supabase.from("newsletter_subscriptions").select("*").order("created_at", { ascending: false });
+      if (newsletters) setNewsletterForms(newsletters);
+    } catch (err) { console.error(err); }
+  }, []);
+
+  const checkAdminAndLoadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return router.push("/login");
 
@@ -101,15 +127,25 @@ export default function AdminDashboard() {
     fetchFormsData(); 
 
     const { data: catData } = await supabase.rpc("get_unique_categories");
-    if (catData) setAllCategories(catData.map((item: any) => item.category_name));
-
     const { data: brandData } = await supabase.from("products_unique_styles").select("brand").not("brand", "is", null);
-    if (brandData) setAllBrands(Array.from(new Set(brandData.map((item: any) => item.brand))).sort() as string[]);
-
     const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
+
+    let fetchedCats = catData ? catData.map((item: any) => item.category_name) : [];
+    let fetchedBrands = brandData ? Array.from(new Set(brandData.map((item: any) => item.brand))).sort() as string[] : [];
+
     if (settings) {
-      setVisibleCategories(settings.visible_categories || allCategories);
-      setVisibleBrands(settings.visible_brands || allBrands);
+      const savedCats = settings.visible_categories || fetchedCats;
+      const savedBrands = settings.visible_brands || fetchedBrands;
+
+      // Fusionar asegurando que aparezcan nuevas categorías/marcas si se agregaron a la BD
+      const mergedCats = Array.from(new Set([...savedCats, ...fetchedCats]));
+      const mergedBrands = Array.from(new Set([...savedBrands, ...fetchedBrands]));
+
+      setAllCategories(mergedCats);
+      setAllBrands(mergedBrands);
+      setVisibleCategories(settings.visible_categories || mergedCats);
+      setVisibleBrands(settings.visible_brands || mergedBrands);
+
       if (settings.small_order_fee_threshold) setFeeThreshold(settings.small_order_fee_threshold);
       if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
       if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
@@ -123,53 +159,89 @@ export default function AdminDashboard() {
         instagramUrl: settings.footer_instagram_url || "#",
         linkedinUrl: settings.footer_linkedin_url || "#"
       });
+    } else {
+      setAllCategories(fetchedCats);
+      setAllBrands(fetchedBrands);
+      setVisibleCategories(fetchedCats);
+      setVisibleBrands(fetchedBrands);
     }
 
     setLoading(false);
-  }
+  }, [router, fetchOrders, fetchUsers, fetchFormsData]);
 
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data?type=orders');
-      const { data } = await res.json();
-      if (data) {
-        setOrders(data);
-        const viewedIds = JSON.parse(localStorage.getItem("viewed_order_ids") || "[]");
-        const freshOrders = data.filter((o: any) => !viewedIds.includes(o.id));
-        setUnseenOrders(freshOrders);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  useEffect(() => {
+    setMounted(true);
+    checkAdminAndLoadData();
+  }, [checkAdminAndLoadData]);
+
+  useEffect(() => {
+    setCurrentFormPage(1);
+  }, [activeFormTab]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  // --- DRAG & DROP HANDLERS ---
+  const handleDragStartCat = (index: number) => { setDraggingCatIndex(index); };
+  const handleDragEnterCat = (index: number) => {
+    if (draggingCatIndex === null || draggingCatIndex === index) return;
+    setAllCategories(prev => {
+      const copy = [...prev];
+      const item = copy.splice(draggingCatIndex, 1)[0];
+      copy.splice(index, 0, item);
+      setDraggingCatIndex(index);
+      return copy;
+    });
   };
+  const handleDragEndCat = () => { setDraggingCatIndex(null); };
 
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data?type=users');
-      const { data } = await res.json();
-      if (data) setUsersList(data);
-    } catch (err) {
-      console.error(err);
-    }
+  const handleDragStartBrand = (index: number) => { setDraggingBrandIndex(index); };
+  const handleDragEnterBrand = (index: number) => {
+    if (draggingBrandIndex === null || draggingBrandIndex === index) return;
+    setAllBrands(prev => {
+      const copy = [...prev];
+      const item = copy.splice(draggingBrandIndex, 1)[0];
+      copy.splice(index, 0, item);
+      setDraggingBrandIndex(index);
+      return copy;
+    });
   };
+  const handleDragEndBrand = () => { setDraggingBrandIndex(null); };
 
-  const fetchFormsData = async () => {
-    try {
-      const { data: contacts } = await supabase.from("contact_submissions").select("*").order("created_at", { ascending: false });
-      if (contacts) setContactForms(contacts);
+  const toggleCategoryVisibility = (cat: string) => setVisibleCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+  const toggleBrandVisibility = (brand: string) => setVisibleBrands(prev => prev.includes(brand) ? prev.filter(b => b !== brand) : [...prev, brand]);
 
-      const { data: newsletters } = await supabase.from("newsletter_subscriptions").select("*").order("created_at", { ascending: false });
-      if (newsletters) setNewsletterForms(newsletters);
-    } catch (err) {
-      console.error(err);
-    }
+  const saveSettings = async () => {
+    setLoading(true);
+    
+    // 🔥 CORRECCIÓN CLAVE: Cruzamos la lista maestra ORDENADA con los elementos que tienen el CHECK ACTIVO.
+    const finalCategories = allCategories.filter(cat => visibleCategories.includes(cat));
+    const finalBrands = allBrands.filter(brand => visibleBrands.includes(brand));
+
+    const { error } = await supabase.from("store_settings").upsert({ 
+      id: "default", 
+      visible_categories: finalCategories, // Guarda el orden correcto SOLO de las activas
+      visible_brands: finalBrands,         // Guarda el orden correcto SOLO de las activas
+      small_order_fee_threshold: feeThreshold, 
+      small_order_fee_amount: feeAmount, 
+      decoration_tiers: pricingTiers,
+      footer_company_name: footerData.companyName,
+      footer_address: footerData.address,
+      footer_email: footerData.email,
+      footer_facebook_url: footerData.facebookUrl,
+      footer_twitter_url: footerData.twitterUrl,
+      footer_instagram_url: footerData.instagramUrl,
+      footer_linkedin_url: footerData.linkedinUrl
+    });
+    setLoading(false);
+    if (error) alert("Error saving settings: " + error.message); else alert("Store settings updated successfully!");
   };
 
   const exportToCSV = (data: any[], filename: string, columns: {header: string, key: string}[]) => {
     if (data.length === 0) return alert("No data to export");
     const csvRows = [];
     csvRows.push(columns.map(c => c.header).join(','));
-    
     data.forEach(row => {
       const values = columns.map(c => {
         let val = row[c.key] ? row[c.key].toString() : '';
@@ -178,7 +250,6 @@ export default function AdminDashboard() {
       });
       csvRows.push(values.join(','));
     });
-
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -201,38 +272,30 @@ export default function AdminDashboard() {
     ]);
   };
 
-  // 🟢 FUNCIÓN PARA ELIMINAR MENSAJES DE CONTACTO
   const deleteContactMessage = async (id: string) => {
     if (!confirm("Are you sure you want to delete this message?")) return;
     try {
       const { error } = await supabase.from("contact_submissions").delete().eq("id", id);
       if (error) throw error;
       setContactForms(prev => prev.filter(msg => msg.id !== id));
-    } catch (err: any) {
-      alert("Error deleting message: " + err.message);
-    }
+    } catch (err: any) { alert("Error deleting message: " + err.message); }
   };
 
-  // 🟢 FUNCIÓN PARA ELIMINAR SUSCRIPTORES DEL NEWSLETTER
   const deleteNewsletterSubscriber = async (id: string) => {
     if (!confirm("Are you sure you want to delete this subscriber?")) return;
     try {
       const { error } = await supabase.from("newsletter_subscriptions").delete().eq("id", id);
       if (error) throw error;
       setNewsletterForms(prev => prev.filter(sub => sub.id !== id));
-    } catch (err: any) {
-      alert("Error deleting subscriber: " + err.message);
-    }
+    } catch (err: any) { alert("Error deleting subscriber: " + err.message); }
   };
 
   const handleOpenOrder = (order: any) => {
     setSelectedOrder(order);
     setTrackingUrlInput("");
-    
     if (unseenOrders.some(o => o.id === order.id)) {
       const updatedUnseen = unseenOrders.filter(o => o.id !== order.id);
       setUnseenOrders(updatedUnseen);
-      
       const viewedIds = JSON.parse(localStorage.getItem("viewed_order_ids") || "[]");
       if (!viewedIds.includes(order.id)) {
         viewedIds.push(order.id);
@@ -249,16 +312,11 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action: 'update_order', payload: { orderId, status: newStatus } })
       });
       const { success, error } = await res.json();
-      
       if (success) {
         setOrders(prev => prev.map(o => o.id === orderId ? { ...o, order_status: newStatus } : o));
         if (selectedOrder && selectedOrder.id === orderId) setSelectedOrder((prev: any) => ({ ...prev, order_status: newStatus }));
-      } else {
-        alert("Error updating order: " + error);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+      } else { alert("Error updating order: " + error); }
+    } catch (err) { console.error(err); }
   };
 
   const handleStatusChangeClick = (order: any, newStatus: string) => {
@@ -272,65 +330,37 @@ export default function AdminDashboard() {
   const confirmStatusChange = async () => {
     if (!pendingStatusChange) return;
     setIsStatusUpdating(true);
-    
     const { order, newStatus } = pendingStatusChange;
     await updateOrderStatus(order.id, newStatus);
-
     try {
       await fetch('/fieldstone-embroider/api/notify-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          orderId: order.id, 
-          status: newStatus,
-          email: order.customer_email,
-          name: order.customer_name,
-          trackingUrl: order.tracking_url
-        })
+        body: JSON.stringify({ orderId: order.id, status: newStatus, email: order.customer_email, name: order.customer_name, trackingUrl: order.tracking_url })
       });
-    } catch (err) {
-      console.error("Error trigger email", err);
-    }
-
+    } catch (err) { console.error("Error trigger email", err); }
     setIsStatusUpdating(false);
     setPendingStatusChange(null);
   };
 
-  const cancelStatusChange = () => {
-    setPendingStatusChange(null);
-  };
+  const cancelStatusChange = () => setPendingStatusChange(null);
 
   const handleSendTracking = async () => {
     if (!trackingUrlInput.trim()) return alert("Please paste the tracking link.");
-    
     setIsSendingTracking(true);
     try {
       const res = await fetch('/fieldstone-embroider/api/easypost', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          orderId: selectedOrder.id, 
-          trackingUrl: trackingUrlInput.trim() 
-        }) 
+        body: JSON.stringify({ orderId: selectedOrder.id, trackingUrl: trackingUrlInput.trim() }) 
       });
-      
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Failed to update tracking.");
-      
-      setSelectedOrder({ 
-        ...selectedOrder, 
-        tracking_url: trackingUrlInput.trim(), 
-        order_status: 'shipped' 
-      });
-      
+      setSelectedOrder({ ...selectedOrder, tracking_url: trackingUrlInput.trim(), order_status: 'shipped' });
       fetchOrders(); 
       setTrackingUrlInput("");
       alert("Success! The customer has been notified and the order is marked as Shipped.");
-    } catch (error: any) { 
-      alert("Error: " + error.message); 
-    } finally { 
-      setIsSendingTracking(false); 
-    }
+    } catch (error: any) { alert("Error: " + error.message); } finally { setIsSendingTracking(false); }
   };
 
   const chartData = useMemo(() => {
@@ -380,10 +410,6 @@ export default function AdminDashboard() {
     return newsletterForms.slice(start, start + formsPerPage);
   }, [newsletterForms, currentFormPage]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
-
   const updateUserRole = async (userId: string, newRole: string) => {
     try {
       const res = await fetch('/fieldstone-embroider/api/admin-data', {
@@ -392,9 +418,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action: 'update_role', payload: { userId, role: newRole } })
       });
       const { success, error } = await res.json();
-      if (success) {
-        setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-      } else alert("Error: " + error);
+      if (success) { setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u)); } else alert("Error: " + error);
     } catch (err) { console.error(err); }
   };
   
@@ -407,9 +431,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action: 'delete_user', payload: { userId } })
       });
       const { success, error } = await res.json();
-      if (success) {
-        setUsersList(prev => prev.filter(u => u.id !== userId));
-      } else alert("Error: " + error);
+      if (success) { setUsersList(prev => prev.filter(u => u.id !== userId)); } else alert("Error: " + error);
     } catch (err) { console.error(err); }
   };
   
@@ -422,23 +444,14 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action: 'create_user', payload: newUser })
       });
       const { success, error } = await res.json();
-      
       if (!success) throw new Error(error);
-      
       alert("User successfully added and registered in Auth!"); 
       setIsUserModalOpen(false); 
       setNewUser({ first_name: "", last_name: "", email: "", password: "", role: "customer" }); 
       fetchUsers();
-    } catch (err: any) { 
-      alert("Error: " + err.message); 
-    } finally { 
-      setLoading(false); 
-    }
+    } catch (err: any) { alert("Error: " + err.message); } finally { setLoading(false); }
   };
 
-  const toggleCategoryVisibility = (cat: string) => setVisibleCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
-  const toggleBrandVisibility = (brand: string) => setVisibleBrands(prev => prev.includes(brand) ? prev.filter(b => b !== brand) : [...prev, brand]);
-  
   const handleTierPriceChange = (index: number, method: 'emb' | 'sp', value: string) => { 
     const newTiers = [...pricingTiers]; 
     newTiers[index][method] = Number(value); 
@@ -449,27 +462,6 @@ export default function AdminDashboard() {
     const newTiers = [...pricingTiers];
     newTiers[index][field] = Number(value);
     setPricingTiers(newTiers);
-  };
-
-  const saveSettings = async () => {
-    setLoading(true);
-    const { error } = await supabase.from("store_settings").upsert({ 
-      id: "default", 
-      visible_categories: visibleCategories, 
-      visible_brands: visibleBrands, 
-      small_order_fee_threshold: feeThreshold, 
-      small_order_fee_amount: feeAmount, 
-      decoration_tiers: pricingTiers,
-      footer_company_name: footerData.companyName,
-      footer_address: footerData.address,
-      footer_email: footerData.email,
-      footer_facebook_url: footerData.facebookUrl,
-      footer_twitter_url: footerData.twitterUrl,
-      footer_instagram_url: footerData.instagramUrl,
-      footer_linkedin_url: footerData.linkedinUrl
-    });
-    setLoading(false);
-    if (error) alert("Error saving settings: " + error.message); else alert("Store settings updated successfully!");
   };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -500,7 +492,6 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen flex bg-gray-50">
       
-      {/* --- SIDEBAR --- */}
       <aside className="w-64 bg-[#111111] text-white flex flex-col fixed h-full z-50">
         <div className="h-20 flex items-center px-6 border-b border-gray-800">
           <h1 className="text-xl font-black uppercase tracking-widest italic">FS Admin<span className="text-blue-500">.</span></h1>
@@ -532,10 +523,8 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
-      {/* --- ÁREA PRINCIPAL --- */}
       <main className="flex-1 ml-64 p-10 min-h-screen">
         
-        {/* PESTAÑA: DASHBOARD */}
         {activeTab === "dashboard" && (
           <div className="animate-in fade-in duration-500 max-w-5xl">
             <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Overview</h2>
@@ -642,7 +631,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: ÓRDENES */}
         {activeTab === "orders" && (
           <div className="animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -755,7 +743,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: REGLAS DE PRECIOS */}
         {activeTab === "pricing" && (
           <div className="animate-in fade-in duration-500 max-w-5xl">
             <div className="flex justify-between items-center mb-8">
@@ -845,7 +832,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: CATEGORÍAS */}
+        {/* 🟢 PESTAÑA: SHOP FILTERS (CON DRAG AND DROP Y GUARDADO CORRECTO) */}
         {activeTab === "categories" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
             <div className="flex justify-between items-center mb-8">
@@ -854,34 +841,93 @@ export default function AdminDashboard() {
                 <Save size={14} /> Save Changes
               </button>
             </div>
+
+            {/* VISIBLE CATEGORIES */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8">
               <h3 className="text-lg font-black uppercase tracking-widest text-black mb-2">Visible Categories</h3>
-              <p className="text-xs font-medium text-gray-500 mb-6">Select which categories should be displayed in the Shop sidebar.</p>
+              <p className="text-xs font-medium text-gray-500 mb-6">Drag and drop cards to reorder how categories appear in the Header & Products page. Click to toggle visibility.</p>
+              
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {allCategories.map(cat => (
-                  <div key={cat} onClick={() => toggleCategoryVisibility(cat)} className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${visibleCategories.includes(cat) ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${visibleCategories.includes(cat) ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{visibleCategories.includes(cat) && <Check size={12} strokeWidth={4} />}</div>
-                    <span className={`text-xs font-bold uppercase tracking-widest ${visibleCategories.includes(cat) ? 'text-blue-700' : 'text-gray-800'}`}>{cat}</span>
-                  </div>
-                ))}
+                {allCategories.map((cat, index) => {
+                  const isVisible = visibleCategories.includes(cat);
+                  return (
+                    <div 
+                      key={cat}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", index.toString());
+                        setDraggingCatIndex(index);
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (draggingCatIndex === null || draggingCatIndex === index) return;
+                        const updated = [...allCategories];
+                        const movedItem = updated.splice(draggingCatIndex, 1)[0];
+                        updated.splice(index, 0, movedItem);
+                        setAllCategories(updated);
+                        setDraggingCatIndex(null);
+                      }}
+                      onClick={() => toggleCategoryVisibility(cat)}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-grab active:cursor-grabbing transition-all select-none ${
+                        isVisible ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-gray-200 bg-gray-50/50 opacity-60'
+                      }`}
+                    >
+                      <Grip size={16} className="text-gray-400 flex-shrink-0" />
+                      <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${isVisible ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>
+                        {isVisible && <Check size={12} strokeWidth={4} />}
+                      </div>
+                      <span className={`text-xs font-bold uppercase tracking-widest flex-1 truncate ${isVisible ? 'text-blue-900' : 'text-gray-500'}`}>{cat}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+
+            {/* VISIBLE BRANDS */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200">
               <h3 className="text-lg font-black uppercase tracking-widest text-black mb-2">Visible Brands</h3>
-              <p className="text-xs font-medium text-gray-500 mb-6">Select which brands should be displayed in the Shop sidebar.</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar p-2">
-                {allBrands.map(brand => (
-                  <div key={brand} onClick={() => toggleBrandVisibility(brand)} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${visibleBrands.includes(brand) ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${visibleBrands.includes(brand) ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{visibleBrands.includes(brand) && <Check size={10} strokeWidth={4} />}</div>
-                    <span className={`text-[10px] font-bold uppercase tracking-widest truncate ${visibleBrands.includes(brand) ? 'text-blue-700' : 'text-gray-800'}`} title={brand}>{brand}</span>
-                  </div>
-                ))}
+              <p className="text-xs font-medium text-gray-500 mb-6">Drag and drop cards to reorder how brands appear in the Header & Products page. Click to toggle visibility.</p>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-[450px] overflow-y-auto custom-scrollbar p-2">
+                {allBrands.map((brand, index) => {
+                  const isVisible = visibleBrands.includes(brand);
+                  return (
+                    <div 
+                      key={brand}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", index.toString());
+                        setDraggingBrandIndex(index);
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (draggingBrandIndex === null || draggingBrandIndex === index) return;
+                        const updated = [...allBrands];
+                        const movedItem = updated.splice(draggingBrandIndex, 1)[0];
+                        updated.splice(index, 0, movedItem);
+                        setAllBrands(updated);
+                        setDraggingBrandIndex(null);
+                      }}
+                      onClick={() => toggleBrandVisibility(brand)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-grab active:cursor-grabbing transition-all select-none ${
+                        isVisible ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-gray-200 bg-gray-50/50 opacity-60'
+                      }`}
+                    >
+                      <Grip size={14} className="text-gray-400 flex-shrink-0" />
+                      <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${isVisible ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>
+                        {isVisible && <Check size={10} strokeWidth={4} />}
+                      </div>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest truncate flex-1 ${isVisible ? 'text-blue-900' : 'text-gray-500'}`} title={brand}>{brand}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
 
-        {/* --- NUEVA PESTAÑA: FOOTER SETTINGS --- */}
         {activeTab === "footer" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
             <div className="flex justify-between items-center mb-8">
@@ -943,7 +989,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: USUARIOS */}
         {activeTab === "users" && (
           <div className="animate-in fade-in duration-500">
             <div className="flex justify-between items-center mb-8">
@@ -980,7 +1025,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PESTAÑA: FORM DATA */}
         {activeTab === "forms" && (
           <div className="animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
@@ -997,7 +1041,7 @@ export default function AdminDashboard() {
                 </button>
               ) : (
                 <button 
-                  onClick={exportNewsletterToCSV} // 🟢 USAMOS LA NUEVA FUNCIÓN AQUI
+                  onClick={exportNewsletterToCSV} 
                   className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"
                 >
                   <Download size={14} /> Export Authorized to CSV
@@ -1052,7 +1096,6 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
 
-                {/* PAGINACIÓN CONTACTOS */}
                 {contactForms.length > 0 && (
                   <div className="p-6 border-t border-gray-200 flex items-center justify-between bg-gray-50/50">
                     <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -1116,7 +1159,6 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
 
-                {/* PAGINACIÓN NEWSLETTER */}
                 {newsletterForms.length > 0 && (
                   <div className="p-6 border-t border-gray-200 flex items-center justify-between bg-gray-50/50">
                     <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -1145,26 +1187,6 @@ export default function AdminDashboard() {
                 )}
               </div>
             )}
-          </div>
-        )}
-
-        {/* PESTAÑA: PERFIL */}
-        {activeTab === "profile" && (
-          <div className="animate-in fade-in duration-500 max-w-2xl">
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
-            <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-200 space-y-8">
-              <div className="flex items-center gap-8 pb-8 border-b border-gray-200">
-                <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-300">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
-                <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-500 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name</label><input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
-                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name</label><input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
-                <div className="col-span-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label><input type="email" disabled value={adminUser?.email} className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed"/></div>
-                <div className="col-span-2 pt-4"><h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2"><Lock size={14} /> Security</h4><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">New Password (leave blank to keep current)</label><input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
-              </div>
-              <div className="pt-6"><button onClick={updateAdminProfile} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl">Save Admin Profile</button></div>
-            </div>
           </div>
         )}
 
@@ -1346,4 +1368,4 @@ export default function AdminDashboard() {
 
     </div>
   );
-} 
+}

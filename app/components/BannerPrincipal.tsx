@@ -9,7 +9,7 @@ import "swiper/css";
 import "swiper/css/pagination";
 import "swiper/css/effect-fade";
 
-// ✅ 1. IMPORTAMOS LAS IMÁGENES DIRECTAMENTE (Esto evita rutas rotas)
+// ✅ IMPORTAMOS LAS IMÁGENES DIRECTAMENTE (Esto evita rutas rotas)
 import imgSlide1 from "@/public/emb/product-photo-(10).png";
 import imgSlide2 from "@/public/emb/product-photo-(7).png";
 import imgSlide3 from "@/public/emb/product-photo-(12).png";
@@ -20,23 +20,23 @@ const SLIDES = [
     tagline: "Premium Custom Apparel",
     headline: "Your Logo. Our Quality. Outwear Your Competition.",
     description: "High-quality embroidery and custom printing for teams, businesses, and events. All-in pricing with no hidden fees.",
-    image: imgSlide1.src, // ✅ Usamos la imagen importada
+    image: imgSlide1.src, 
     primaryAction: { label: "Start Designing", link: "/products" },
-    secondaryAction: { label: "Request a Quote", link: "/quote" }
+    secondaryAction: null
   },
   {
     tagline: "Expert Embroidery",
     headline: "Flawless Stitching on Premium Brands.",
     description: "From corporate polos to custom headwear, we bring your brand to life with industry-leading precision and care.",
-    image: imgSlide2.src, // ✅ Usamos la imagen importada
-    primaryAction: { label: "Shop Headwear", link: "/products?category=Headwear" },
-    secondaryAction: { label: "View Brands", link: "/brands" }
+    image: imgSlide2.src, 
+    primaryAction: { label: "Personalize Your Caps", link: "/products?category=Caps" },
+    secondaryAction: null
   },
   {
     tagline: "Fast & Reliable",
     headline: "No Hidden Fees. Just Great Custom Gear.",
     description: "Your logo is included in the price. Enjoy fast turnaround times and digital proofs before production begins.",
-    image: imgSlide3.src, // ✅ Usamos la imagen importada
+    image: imgSlide3.src, 
     primaryAction: { label: "Explore Catalog", link: "/products" },
     secondaryAction: null
   }

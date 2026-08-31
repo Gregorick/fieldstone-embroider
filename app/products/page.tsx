@@ -45,16 +45,6 @@ const sortSizes = (sizes: { name: string; count: number }[]) => {
   });
 };
 
-const ALL_CATALOG_BRANDS = [
-  "A4", "Allmade", "BELLA+CANVAS", "Brooks Brothers", "Bulwark", "Carhartt",
-  "Champion", "Comfort Colors", "CornerStone", "Cotopaxi", "District",
-  "Eddie Bauer", "Gildan", "Jerzees", "Mercer+Mettle", "New Era",
-  "Next Level Apparel", "Nike", "OGIO", "Outdoor Research", "Port & Co",
-  "Port Authority", "Rabbit Skins", "Red Kap", "Richardson", "Russell Outdoors",
-  "Spacecraft", "Sport-Tek", "Stanley/Stella", "tentree", "The North Face",
-  "Tommy Bahama", "TravisMathew", "Volunteer Knitwear", "Wink"
-].sort();
-
 function CatalogImage({ imageUrl, title }: { imageUrl: string; title: string }) {
   return (
     <>
@@ -81,17 +71,14 @@ function ProductsContent() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
-  // Estados de Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [totalProducts, setTotalProducts] = useState(0);
 
-  // Estados de Filtros Activos
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [selectedBrand, setSelectedBrand] = useState<string>(initialBrand);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]); 
 
-  // Estados de Listas Dinámicas
   const [dynamicSizes, setDynamicSizes] = useState<{name: string, count: number}[]>([]);
   const [dynamicColors, setDynamicColors] = useState<{name: string, count: number}[]>([]);
   const [dynamicCategories, setDynamicCategories] = useState<string[]>([]);
@@ -107,14 +94,23 @@ function ProductsContent() {
     setCurrentPage(1);
   }, [searchParams]);
 
-  // 🔥 FETCH 1: CARGA LAS OPCIONES DEL MENÚ LATERAL
+  // 🔥 FETCH 1: CARGA LAS OPCIONES DEL MENÚ LATERAL Y ORDEN DE DB
   useEffect(() => {
     async function fetchFilters() {
-      const { data: catData } = await supabase.rpc('get_unique_categories');
-      if (catData) setDynamicCategories(catData.map((c: any) => c.category_name));
+      const { data: settings } = await supabase.from("store_settings").select("visible_categories, visible_brands").eq("id", "default").single();
+      
+      let orderedCats: string[] = [];
+      let orderedBrands: string[] = [];
+
+      if (settings) {
+        orderedCats = settings.visible_categories || [];
+        orderedBrands = settings.visible_brands || [];
+      }
+
+      setDynamicCategories(orderedCats);
 
       if (!selectedCategory) {
-        setDynamicBrands(ALL_CATALOG_BRANDS);
+        setDynamicBrands(orderedBrands);
       } else {
         const { data: brandData } = await supabase
           .from("products_unique_styles")
@@ -122,7 +118,12 @@ function ProductsContent() {
           .eq("category", selectedCategory)
           .not("brand", "is", null)
           .limit(5000);
-        if (brandData) setDynamicBrands(Array.from(new Set(brandData.map(b => b.brand))).sort());
+          
+        if (brandData) {
+           const catsBrands = Array.from(new Set(brandData.map(b => b.brand)));
+           const sortedCatBrands = orderedBrands.filter(b => catsBrands.includes(b));
+           setDynamicBrands(sortedCatBrands);
+        }
       }
 
       const { data: sizesData } = await supabase.rpc('get_dynamic_sizes', {
@@ -146,7 +147,7 @@ function ProductsContent() {
     fetchFilters();
   }, [selectedCategory, selectedBrand, isRootView]);
 
-  // 🔥 FETCH 2: FILTRADO PROFUNDO, ID CORRECTO Y FOTO DE COLOR EXACTO
+  // 🔥 FETCH 2: FILTRADO PROFUNDO
   useEffect(() => {
     async function fetchProducts() {
       setLoading(true);
@@ -158,9 +159,8 @@ function ProductsContent() {
         const to = from + ITEMS_PER_PAGE - 1;
 
         let matchingStyles: string[] = [];
-        let styleToImageMap = new Map<string, string>(); // 🌟 Guardará la foto específica de cada variante
+        let styleToImageMap = new Map<string, string>(); 
 
-        // 🌟 PASO 1: Extraemos SKUs e Imagen Exacta desde la tabla de Variantes (products)
         if (isDeepFiltering) {
           let exactColorMatches: string[] = [];
           
@@ -192,7 +192,6 @@ function ProductsContent() {
             }
           }
 
-          // Consultamos solo los Estilos (SKUs) y su imagen
           let variantQuery = supabase.from("products").select("style, image_url");
           
           if (selectedCategory) variantQuery = variantQuery.eq("category", selectedCategory);
@@ -212,7 +211,6 @@ function ProductsContent() {
             return;
           }
 
-          // 🌟 Guardamos la foto específica del color filtrado
           for (const v of variantData) {
             if (v.style && v.image_url && !styleToImageMap.has(v.style)) {
               styleToImageMap.set(v.style, v.image_url);
@@ -223,7 +221,6 @@ function ProductsContent() {
           matchingStyles = matchingStyles.slice(0, 800); 
         }
 
-        // 🌟 PASO 2: Llamamos a la vista principal para obtener el SLUG MAESTRO
         let query = supabase
           .from("products_unique_styles")
           .select("*", { count: "exact" });
@@ -243,7 +240,6 @@ function ProductsContent() {
         if (count !== null) setTotalProducts(count);
         
         if (data) {
-          // 🌟 PASO 3: Reemplazamos la foto predeterminada por la del color exacto
           const customizedData = data.map(item => {
             if (isDeepFiltering && styleToImageMap.has(item.style)) {
               return { ...item, image_url: styleToImageMap.get(item.style) };
@@ -290,7 +286,6 @@ function ProductsContent() {
   const showingFrom = totalProducts === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1;
   const showingTo = Math.min(currentPage * ITEMS_PER_PAGE, totalProducts);
 
-  // 🚀 CONSTRUCTOR DE URLS AMIGABLES
   const buildProductUrl = (product: any) => {
     const params = new URLSearchParams();
     if (selectedColors.length > 0) params.append("color", selectedColors[0]);
@@ -313,7 +308,6 @@ function ProductsContent() {
           <span className="text-black">Shop All</span>
         </div>
         
-        {/* 🔥 CORRECCIÓN RESPONSIVA APLICADA AQUÍ */}
         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-4 lg:gap-0 border-b border-gray-100 pb-6">
           <h1 className="text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tighter text-black italic leading-tight lg:leading-none break-words">
             {selectedCategory || "The Collection"}
@@ -357,7 +351,6 @@ function ProductsContent() {
             </div>
           )}
 
-          {/* LISTA AGRUPADA DE COLORES PRINCIPALES */}
           <div className="mb-10">
             <h3 className="text-2xl font-bold text-black mb-6 tracking-tight">Color</h3>
             <ul className="space-y-4">
@@ -387,7 +380,7 @@ function ProductsContent() {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 border-b pb-2">Category</h3>
             <ul className="space-y-2">
               <li onClick={() => handleCategoryChange("")} className={`text-xs font-bold uppercase cursor-pointer ${!selectedCategory ? 'text-[#8012d8]' : 'text-gray-500 hover:text-black'}`}>All Categories</li>
-              {dynamicCategories.slice(0, 10).map(cat => (
+              {dynamicCategories.map(cat => (
                 <li key={cat} onClick={() => handleCategoryChange(cat)} className={`text-xs font-bold uppercase cursor-pointer ${selectedCategory === cat ? 'text-[#8012d8]' : 'text-gray-500 hover:text-[#8012d8]'}`}>
                   {cat}
                 </li>
@@ -408,7 +401,6 @@ function ProductsContent() {
           </div>
         </aside>
 
-        {/* GRID DE PRODUCTOS */}
         <div className="flex-1 w-full pb-32">
           
           <div className="flex justify-between items-center mb-8">
@@ -459,7 +451,6 @@ function ProductsContent() {
                 ))}
               </div>
 
-              {/* PAGINACIÓN */}
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-4 mt-20 pt-10 border-t border-gray-100">
                   <button

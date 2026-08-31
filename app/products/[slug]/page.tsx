@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import { useCart } from "../../context/CartContext";
-import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus, Send } from "lucide-react";
 
 import placement1 from "@/public/PLACEMENT-GUIDE_Pagina_1.jpg";
 import placement2 from "@/public/PLACEMENT-GUIDE_Pagina_2.jpg";
@@ -52,7 +52,6 @@ function ProductPageContent() {
   const [quantity, setQuantity] = useState<number>(1);
   const [decorationMethod, setDecorationMethod] = useState<"emb" | "sp" | "">("");
   
-  // 🟢 ESTADOS PARA MÚLTIPLES LOCATIONS
   const [location1, setLocation1] = useState<string>("");
   const [location2, setLocation2] = useState<string>("");
   const [location3, setLocation3] = useState<string>("");
@@ -60,6 +59,13 @@ function ProductPageContent() {
   const [extraComments, setExtraComments] = useState<string>("");
   const [validationError, setValidationError] = useState<string | null>(null);
   
+  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [quoteName, setQuoteName] = useState("");
+  const [quoteEmail, setQuoteEmail] = useState("");
+  const [quotePhone, setQuotePhone] = useState("");
+  const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
+  const [quoteSuccess, setQuoteSuccess] = useState(false);
+
   const [variants, setVariants] = useState<any[]>([]);
   const [availableColorObjects, setAvailableColorObjects] = useState<{name: string, image: string}[]>([]);
   const [availableSizes, setAvailableSizes] = useState<string[]>([]);
@@ -94,6 +100,18 @@ function ProductPageContent() {
   useEffect(() => {
     const savedLogo = localStorage.getItem("user_custom_logo");
     if (savedLogo) setUploadedLogo(savedLogo);
+
+    async function loadAuthUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        if (user.email) setQuoteEmail(user.email);
+        const { data: profile } = await supabase.from("profiles").select("first_name, last_name").eq("id", user.id).single();
+        if (profile) {
+          setQuoteName(`${profile.first_name || ""} ${profile.last_name || ""}`.trim());
+        }
+      }
+    }
+    loadAuthUser();
 
     async function fetchProductAndSettings() {
       const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
@@ -186,7 +204,6 @@ function ProductPageContent() {
     }
   }, [selectedColor, selectedSize, variants]);
 
-  // 🟢 Reiniciar locations si cambia el método de decoración
   useEffect(() => {
     setLocation1("");
     setLocation2("");
@@ -244,21 +261,18 @@ function ProductPageContent() {
   const totalSubtotal = unitPrice * quantity;
   const isQuote = quantity >= 500;
 
-  const handleAddToCart = () => {
+  const handleActionClick = () => {
     if (!selectedColor) return setValidationError("Please select a Color for your product.");
     if (!selectedSize) return setValidationError("Please select a Size for your product.");
     if (!decorationMethod) return setValidationError("Please select a Decoration Method (Embroidery or Screen Print).");
     if (!uploadedLogo) return setValidationError("Please upload your Custom Logo to proceed.");
-    
-    // 🟢 Solo el Location 1 es obligatorio
     if (!location1) return setValidationError("Please select a Primary Logo Location.");
 
     if (isQuote) {
-      alert("Redirecting to Quote Form...");
+      setIsQuoteModalOpen(true);
       return;
     }
     
-    // 🟢 Combinar todas las locaciones seleccionadas en un solo String para la base de datos
     const combinedLocations = [location1, location2, location3].filter(Boolean).join(" + ");
 
     addToCart({
@@ -277,6 +291,53 @@ function ProductPageContent() {
       extraComments: extraComments
     });
     setIsCartOpen(true);
+  };
+
+  const handleSendQuoteRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quoteName || !quoteEmail || !quotePhone) {
+      return alert("Please fill in all contact fields.");
+    }
+
+    setIsSubmittingQuote(true);
+    try {
+      const combinedLocations = [location1, location2, location3].filter(Boolean).join(" + ");
+      
+      let safeLogoUrl = uploadedLogo;
+      if (safeLogoUrl && safeLogoUrl.startsWith("data:")) {
+        safeLogoUrl = safeLogoUrl.trim();
+      }
+
+      const payload = {
+        customerName: quoteName,
+        customerEmail: quoteEmail,
+        customerPhone: quotePhone,
+        productTitle: product.title || product.product_name,
+        productStyle: product.style,
+        selectedColor,
+        selectedSize,
+        decorationMethod: decorationMethod.toUpperCase(),
+        locations: combinedLocations,
+        quantity,
+        logoUrl: safeLogoUrl,
+        extraComments
+      };
+
+      const res = await fetch('/fieldstone-embroider/api/send-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to send quote request.");
+
+      setQuoteSuccess(true);
+    } catch (err: any) {
+      alert("Error sending quote: " + err.message);
+    } finally {
+      setIsSubmittingQuote(false);
+    }
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin" /></div>;
@@ -470,7 +531,6 @@ function ProductPageContent() {
                       Replace File
                     </button>
 
-                    {/* 🟢 PRIMER LOCATION (OBLIGATORIO) */}
                     <div className="w-full mt-6 text-left border-t border-gray-200 pt-6">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Primary Logo Location *</label>
                       <div className="relative">
@@ -478,7 +538,6 @@ function ProductPageContent() {
                           value={location1} 
                           onChange={(e) => {
                             setLocation1(e.target.value);
-                            // Reiniciar subsecuentes si se cambia el primero
                             if (e.target.value === location2) setLocation2("");
                             if (e.target.value === location3) setLocation3("");
                           }} 
@@ -491,7 +550,6 @@ function ProductPageContent() {
                       </div>
                     </div>
 
-                    {/* 🟢 SEGUNDO LOCATION (Opcional - Embroidery o Screen Print) */}
                     {location1 && (decorationMethod === "emb" || decorationMethod === "sp") && availableLocations.length > 1 && (
                       <div className="w-full mt-4 text-left animate-in fade-in slide-in-from-top-2 duration-300">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Second Logo Location (Optional)</label>
@@ -505,7 +563,6 @@ function ProductPageContent() {
                             className="w-full p-4 text-sm font-bold text-black bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
                           >
                             <option value="">None</option>
-                            {/* Filtrar el seleccionado en el primer dropdown */}
                             {availableLocations.filter(loc => loc !== location1).map(loc => (<option key={loc} value={loc}>{loc}</option>))}
                           </select>
                           <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -513,7 +570,6 @@ function ProductPageContent() {
                       </div>
                     )}
 
-                    {/* 🟢 TERCER LOCATION (Opcional - Solo para Screen Print) */}
                     {location2 && decorationMethod === "sp" && availableLocations.length > 2 && (
                       <div className="w-full mt-4 text-left animate-in fade-in slide-in-from-top-2 duration-300">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Third Logo Location (Optional)</label>
@@ -524,7 +580,6 @@ function ProductPageContent() {
                             className="w-full p-4 text-sm font-bold text-black bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
                           >
                             <option value="">None</option>
-                            {/* Filtrar los ya seleccionados */}
                             {availableLocations.filter(loc => loc !== location1 && loc !== location2).map(loc => (<option key={loc} value={loc}>{loc}</option>))}
                           </select>
                           <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -561,7 +616,7 @@ function ProductPageContent() {
                 </div>
               </div>
               <div className="flex-[2]">
-                <button onClick={handleAddToCart} className={`w-full h-[54px] text-[11px] font-black uppercase tracking-[0.2em] rounded-xl transition-colors shadow-xl flex items-center justify-center gap-3 ${isQuote ? "bg-white border-2 border-black text-black hover:bg-black hover:text-white" : "bg-black text-white hover:bg-[#3b5bdb]"}`}>
+                <button onClick={handleActionClick} className={`w-full h-[54px] text-[11px] font-black uppercase tracking-[0.2em] rounded-xl transition-colors shadow-xl flex items-center justify-center gap-3 ${isQuote ? "bg-white border-2 border-black text-black hover:bg-black hover:text-white" : "bg-black text-white hover:bg-[#3b5bdb]"}`}>
                   {isQuote ? "Request a Quote" : `Add to Cart • $${totalSubtotal.toFixed(2)}`}
                 </button>
               </div>
@@ -582,6 +637,82 @@ function ProductPageContent() {
         </div>
       </div>
       <Footer />
+
+      {/* 🟢 MODAL DE COTIZACIÓN (REQUEST A QUOTE) */}
+      {isQuoteModalOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => !isSubmittingQuote && setIsQuoteModalOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <h3 className="text-xl font-black uppercase tracking-tighter text-black">Request a Custom Quote (500+ Units)</h3>
+              {!isSubmittingQuote && (
+                <button onClick={() => setIsQuoteModalOpen(false)} className="p-2 bg-white rounded-full text-gray-500 hover:text-black hover:bg-gray-200 transition-colors shadow-sm"><X size={20}/></button>
+              )}
+            </div>
+
+            <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+              {quoteSuccess ? (
+                <div className="py-12 text-center flex flex-col items-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                    <Check size={32} className="text-green-600" />
+                  </div>
+                  <h4 className="text-2xl font-black uppercase tracking-tighter text-black mb-2">Quote Request Sent!</h4>
+                  <p className="text-sm font-bold text-gray-500 mb-6">We have received your details and will get back to you shortly with a custom wholesale price.</p>
+                  <button onClick={() => { setIsQuoteModalOpen(false); setQuoteSuccess(false); }} className="px-8 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors">Close</button>
+                </div>
+              ) : (
+                <form onSubmit={handleSendQuoteRequest} className="space-y-6">
+                  {/* DETALLES DEL PRODUCTO */}
+                  <div className="p-5 bg-gray-50 border border-gray-200 rounded-2xl flex items-center gap-4">
+                    {uploadedLogo && (
+                      <div className="w-16 h-16 bg-white border border-gray-200 rounded-xl p-1 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        <img src={uploadedLogo} alt="Logo" className="w-full h-full object-contain" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-0.5">{product.brand}</span>
+                      <h4 className="text-sm font-black uppercase tracking-tight text-black">{product.title || product.product_name}</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-[10px] font-bold text-gray-600">
+                        <p>Color: <span className="text-black">{selectedColor}</span></p>
+                        <p>Size: <span className="text-black">{selectedSize}</span></p>
+                        <p>Method: <span className="text-black">{decorationMethod.toUpperCase()}</span></p>
+                        <p>Qty: <span className="text-black">{quantity} units</span></p>
+                      </div>
+                      <p className="text-[10px] font-bold text-gray-600 mt-1">Locations: <span className="text-black">{[location1, location2, location3].filter(Boolean).join(" + ")}</span></p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h5 className="text-xs font-black uppercase tracking-widest text-black">Your Contact Information</h5>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Full Name *</label>
+                      <input type="text" required value={quoteName} onChange={e => setQuoteName(e.target.value)} placeholder="John Doe" className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address *</label>
+                        <input type="email" required value={quoteEmail} onChange={e => setQuoteEmail(e.target.value)} placeholder="john@example.com" className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Phone Number *</label>
+                        <input type="tel" required value={quotePhone} onChange={e => setQuotePhone(e.target.value)} placeholder="(555) 000-0000" className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button type="submit" disabled={isSubmittingQuote} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-[#8012d8] transition-colors shadow-xl flex items-center justify-center gap-2 disabled:opacity-50">
+                    {isSubmittingQuote ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Send size={16} />
+                    )}
+                    {isSubmittingQuote ? "Sending Quote Request..." : "Submit Quote Request"}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL ADVERTENCIA */}
       {isLegalWarningOpen && (

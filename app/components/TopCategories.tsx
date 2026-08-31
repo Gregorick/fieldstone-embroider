@@ -96,6 +96,7 @@ function BrandCard({ brandName }: { brandName: string }) {
   return (
     <Link 
       href={`/products?brand=${encodeURIComponent(brandName)}`}
+      prefetch={false}
       className="group relative flex flex-col items-center justify-center h-24 bg-[#F3F4F6] rounded-xl border border-transparent hover:border-gray-300 hover:shadow-md transition-all duration-300 px-4"
     >
       {importedImage && !imgError ? (
@@ -174,6 +175,7 @@ export default function FeaturedBrands() {
           
           <Link 
             href="/products" 
+            prefetch={false}
             className="text-sm font-bold text-[#8012d8] hover:text-[#650cae] transition-colors flex items-center gap-1"
           >
             See All Featured Brands <span aria-hidden="true">&rarr;</span>
