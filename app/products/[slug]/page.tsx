@@ -7,11 +7,11 @@ import { supabase } from "@/lib/supabase";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import { useCart } from "../../context/CartContext";
-import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus, Send } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus, Send, ArrowRight } from "lucide-react";
 
 import placement1 from "@/public/PLACEMENT-GUIDE_Pagina_1.jpg";
 import placement2 from "@/public/PLACEMENT-GUIDE_Pagina_2.jpg";
-import placement3 from "@/public/PLACEMENT-GUIDE_Pagina_3.jpg";
+import placement3 from "@/public/PLACEMENT-GUIDE_Pagina_3-1.jpg";
 
 const MAIN_COLORS = [
   { name: "Blacks", base: "black" }, { name: "Whites", base: "white" },
@@ -383,7 +383,7 @@ function ProductPageContent() {
           </div>
 
           <div className="lg:col-span-6">
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] color-primary block mb-2">{product.brand}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#8012d8] block mb-2">{product.brand}</span>
             <h1 className="text-4xl lg:text-5xl font-black uppercase tracking-tighter text-black mb-4 leading-none">{product.title || product.product_name}</h1>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Style: {product.style}</p>
 
@@ -472,7 +472,23 @@ function ProductPageContent() {
             {/* SUBIDA DE ARCHIVO Y PREVIEW */}
             {decorationMethod && (
               <div className="mb-10 w-full border-2 border-dashed border-gray-300 rounded-3xl p-8 flex flex-col items-center justify-center bg-gray-50 transition-all relative animate-in fade-in">
-                <button onClick={() => setIsPlacementGuideOpen(true)} className="text-blue-600 hover:text-blue-800 font-bold mb-4 text-sm underline transition-colors cursor-pointer">Placement Guide</button>
+                
+                {/* 🔥 BOTÓN PLACEMENT GUIDE MEJORADO 🔥 */}
+                <div className="relative group mb-8">
+                  <button 
+                    onClick={() => setIsPlacementGuideOpen(true)} 
+                    className="flex items-center gap-3 px-8 py-3.5 bg-[#8012d8] text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-full hover:bg-black transition-colors shadow-lg cursor-pointer"
+                  >
+                    Placement Guide
+                    <ArrowRight size={16} className="animate-arrow text-white" strokeWidth={3} />
+                  </button>
+                  
+                  {/* Tooltip Hover */}
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-2 bg-black text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 flex flex-col items-center shadow-xl">
+                    A quick guide to help you choose the best logo placement
+                    <div className="absolute -bottom-1 w-2 h-2 bg-black rotate-45"></div>
+                  </div>
+                </div>
                 
                 <input 
                   type="file" 
@@ -484,19 +500,20 @@ function ProductPageContent() {
 
                 {!uploadedLogo ? (
                   <>
-                    <p className="text-gray-600 text-xs mb-4">Upload Your File:</p>
+                    <p className="text-gray-600 text-xs font-bold mb-2">Upload Your Logo:</p>
+                    <p className="text-gray-400 text-[10px] font-medium mb-5 uppercase tracking-widest">Accepted Formats: PNG, JPG, PDF</p>
                     <button 
                       onClick={() => setIsLegalWarningOpen(true)}
-                      className="bg-[#3b5bdb] hover:bg-blue-700 text-white px-8 py-3 rounded-md cursor-pointer font-medium transition-colors shadow-sm text-sm"
+                      className="bg-black hover:bg-[#8012d8] text-white px-8 py-3 rounded-full cursor-pointer font-black uppercase tracking-widest text-[11px] transition-colors shadow-sm"
                     >
-                      Upload Your File
+                      Upload Your Logo
                     </button>
                   </>
                 ) : (
                   <div className="flex flex-col items-center gap-4 animate-fade-in w-full">
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="bg-green-100 p-1 rounded-full"><Check size={16} className="text-green-600" /></div>
-                      <p className="text-sm text-green-700 font-bold">Logo Uploaded Successfully!</p>
+                    <div className="flex items-center gap-2 mt-2 border border-green-200 bg-green-50 px-4 py-2 rounded-full">
+                      <div className="bg-green-100 p-1 rounded-full"><Check size={14} className="text-green-600" /></div>
+                      <p className="text-[11px] uppercase tracking-widest text-green-700 font-black">Logo Uploaded Successfully!</p>
                     </div>
                     
                     <div className="relative w-64 h-64 bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center justify-center">
@@ -526,7 +543,7 @@ function ProductPageContent() {
 
                     <button 
                       onClick={() => setIsLegalWarningOpen(true)}
-                      className="text-xs text-[#3b5bdb] cursor-pointer hover:underline font-semibold tracking-wide"
+                      className="text-[11px] text-[#8012d8] cursor-pointer hover:text-black font-black uppercase tracking-widest transition-colors mt-2"
                     >
                       Replace File
                     </button>
@@ -616,7 +633,7 @@ function ProductPageContent() {
                 </div>
               </div>
               <div className="flex-[2]">
-                <button onClick={handleActionClick} className={`w-full h-[54px] text-[11px] font-black uppercase tracking-[0.2em] rounded-xl transition-colors shadow-xl flex items-center justify-center gap-3 ${isQuote ? "bg-white border-2 border-black text-black hover:bg-black hover:text-white" : "bg-black text-white hover:bg-[#3b5bdb]"}`}>
+                <button onClick={handleActionClick} className={`w-full h-[54px] text-[11px] font-black uppercase tracking-[0.2em] rounded-xl transition-colors shadow-xl flex items-center justify-center gap-3 ${isQuote ? "bg-white border-2 border-black text-black hover:bg-black hover:text-white" : "bg-black text-white hover:bg-[#8012d8]"}`}>
                   {isQuote ? "Request a Quote" : `Add to Cart • $${totalSubtotal.toFixed(2)}`}
                 </button>
               </div>
@@ -657,7 +674,7 @@ function ProductPageContent() {
                   </div>
                   <h4 className="text-2xl font-black uppercase tracking-tighter text-black mb-2">Quote Request Sent!</h4>
                   <p className="text-sm font-bold text-gray-500 mb-6">We have received your details and will get back to you shortly with a custom wholesale price.</p>
-                  <button onClick={() => { setIsQuoteModalOpen(false); setQuoteSuccess(false); }} className="px-8 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors">Close</button>
+                  <button onClick={() => { setIsQuoteModalOpen(false); setQuoteSuccess(false); }} className="px-8 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#8012d8] transition-colors">Close</button>
                 </div>
               ) : (
                 <form onSubmit={handleSendQuoteRequest} className="space-y-6">
@@ -669,7 +686,7 @@ function ProductPageContent() {
                       </div>
                     )}
                     <div className="flex-1">
-                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-0.5">{product.brand}</span>
+                      <span className="text-[9px] font-black text-[#8012d8] uppercase tracking-widest block mb-0.5">{product.brand}</span>
                       <h4 className="text-sm font-black uppercase tracking-tight text-black">{product.title || product.product_name}</h4>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-[10px] font-bold text-gray-600">
                         <p>Color: <span className="text-black">{selectedColor}</span></p>
@@ -714,7 +731,7 @@ function ProductPageContent() {
         </div>
       )}
 
-      {/* MODAL ADVERTENCIA */}
+      {/* MODAL ADVERTENCIA LEGAL */}
       {isLegalWarningOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
@@ -743,6 +760,7 @@ function ProductPageContent() {
         </div>
       )}
 
+      {/* MODAL DE VALIDACIÓN */}
       {validationError && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
@@ -754,6 +772,7 @@ function ProductPageContent() {
         </div>
       )}
       
+      {/* MODAL PLACEMENT GUIDE */}
       {isPlacementGuideOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="relative w-full max-w-5xl bg-white rounded-3xl p-2 shadow-2xl">
@@ -771,6 +790,20 @@ function ProductPageContent() {
           </div>
         </div>
       )}
+      
+      {/* ESTILOS GLOBALES DE LA PÁGINA */}
+      <style jsx global>{`
+        @keyframes moveArrow {
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(5px); }
+        }
+        .animate-arrow {
+          animation: moveArrow 1.5s infinite ease-in-out;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+      `}</style>
     </main>
   );
 }
