@@ -21,24 +21,21 @@ const SLIDES = [
     headline: "Your Logo. Our Quality. Outwear Your Competition.",
     description: "High-quality embroidery and custom printing for teams, businesses, and events. All-in pricing with no hidden fees.",
     image: imgSlide1.src, 
-    primaryAction: { label: "Start Designing", link: "/products" },
-    secondaryAction: null
+    primaryAction: { label: "Start Designing", link: "/products" }
   },
   {
     tagline: "Expert Embroidery",
     headline: "Flawless Stitching on Premium Brands.",
     description: "From corporate polos to custom headwear, we bring your brand to life with industry-leading precision and care.",
     image: imgSlide2.src, 
-    primaryAction: { label: "Personalize Your Caps", link: "/products?category=Caps" },
-    secondaryAction: null
+    primaryAction: { label: "Personalize Your Caps", link: "/products?category=Caps" }
   },
   {
     tagline: "Fast & Reliable",
     headline: "No Hidden Fees. Just Great Custom Gear.",
     description: "Your logo is included in the price. Enjoy fast turnaround times and digital proofs before production begins.",
     image: imgSlide3.src, 
-    primaryAction: { label: "Explore Catalog", link: "/products" },
-    secondaryAction: null
+    primaryAction: { label: "Explore Catalog", link: "/products" }
   }
 ];
 
@@ -86,15 +83,6 @@ export default function BannerPrincipal() {
                   >
                     {slide.primaryAction.label}
                   </Link>
-
-                  {slide.secondaryAction && (
-                    <Link 
-                      href={slide.secondaryAction.link}
-                      className="w-full sm:w-auto px-10 py-4 bg-transparent border-2 border-gray-300 text-black text-[11px] font-black uppercase tracking-[0.2em] hover:border-black transition-colors rounded-full text-center"
-                    >
-                      {slide.secondaryAction.label}
-                    </Link>
-                  )}
                 </div>
               </div>
 
