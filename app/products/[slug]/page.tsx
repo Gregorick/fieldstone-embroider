@@ -34,6 +34,55 @@ const DEFAULT_DECORATION_TIERS = [
   { min: 288, max: 499, emb: 6.00, sp: 3.00, dtf: 5.45 },
 ];
 
+// 🔥 NUEVO COMPONENTE: Imagen con Zoom al hacer clic
+function ZoomableImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [position, setPosition] = useState({ x: 50, y: 50 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isZoomed) return;
+    const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - left) / width) * 100;
+    const y = ((e.clientY - top) / height) * 100;
+    setPosition({ x, y });
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isZoomed) {
+      // Calcula exactamente dónde hizo clic el usuario para hacer el zoom hacia ese punto
+      const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+      const x = ((e.clientX - left) / width) * 100;
+      const y = ((e.clientY - top) / height) * 100;
+      setPosition({ x, y });
+    }
+    setIsZoomed(!isZoomed);
+  };
+
+  return (
+    <div 
+      className={`relative overflow-hidden rounded-xl border border-gray-100 shadow-sm transition-all ${isZoomed ? 'cursor-zoom-out z-50 shadow-2xl' : 'cursor-zoom-in'} ${className}`}
+      onMouseMove={handleMouseMove}
+      onClick={handleClick}
+      onMouseLeave={() => setIsZoomed(false)}
+    >
+      <img 
+        src={src} 
+        alt={alt} 
+        className="w-full h-auto object-contain transition-transform duration-300 ease-out"
+        style={{
+          transform: isZoomed ? 'scale(2.5)' : 'scale(1)',
+          transformOrigin: `${position.x}% ${position.y}%`
+        }}
+      />
+      {!isZoomed && (
+        <div className="absolute inset-0 bg-black/0 hover:bg-black/5 transition-colors pointer-events-none flex items-center justify-center">
+          <span className="bg-black/80 text-white text-[10px] font-bold px-3 py-1.5 rounded-full opacity-0 hover:opacity-100">Click to Zoom</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductPageContent() {
   const { slug } = useParams();
   const router = useRouter();
@@ -780,11 +829,13 @@ function ProductPageContent() {
             
             <div className="h-[80vh] overflow-y-auto custom-scrollbar p-4 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <img src={placement1.src} alt="Placement Guide Page 1" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
-                <img src={placement2.src} alt="Placement Guide Page 2" className="w-full h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
+                <ZoomableImage src={placement1.src} alt="Placement Guide Page 1" />
+                <ZoomableImage src={placement2.src} alt="Placement Guide Page 2" />
               </div>
               <div className="w-full flex justify-center">
-                <img src={placement3.src} alt="Placement Guide Page 3 - Bags" className="w-full max-w-4xl h-auto object-contain rounded-xl border border-gray-100 shadow-sm" />
+                <div className="w-full max-w-4xl">
+                   <ZoomableImage src={placement3.src} alt="Placement Guide Page 3 - Bags" />
+                </div>
               </div>
             </div>
           </div>
