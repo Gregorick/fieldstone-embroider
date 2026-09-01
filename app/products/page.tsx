@@ -147,7 +147,48 @@ function ProductsContent() {
     fetchFilters();
   }, [selectedCategory, selectedBrand, isRootView]);
 
-  // 🔥 FETCH 2: FILTRADO PROFUNDO
+  // 🔥 FUNCIÓN PARA ORGANIZAR LOS PRODUCTOS: 9 Caps -> 9 Bags -> 9 Polos -> El resto "Random"
+  const organizeProducts = (productsList: any[]) => {
+    const caps: any[] = [];
+    const bags: any[] = [];
+    const polos: any[] = [];
+    const others: any[] = [];
+
+    productsList.forEach(p => {
+      const cat = (p.category || "").toLowerCase();
+      if (cat.includes('cap') || cat.includes('headwear')) {
+        caps.push(p);
+      } else if (cat.includes('bag')) {
+        bags.push(p);
+      } else if (cat.includes('polo') || cat.includes('knit')) {
+        polos.push(p);
+      } else {
+        others.push(p);
+      }
+    });
+
+    // Extraemos hasta 9 productos de cada grupo prioritario
+    const topCaps = caps.slice(0, 9);
+    const topBags = bags.slice(0, 9);
+    const topPolos = polos.slice(0, 9);
+
+    // Agrupamos todo el inventario sobrante (gorras, bolsos y polos que no entraron en el top 9 + el resto de categorías)
+    const remainingProducts = [
+      ...caps.slice(9),
+      ...bags.slice(9),
+      ...polos.slice(9),
+      ...others
+    ];
+
+    // Mezcla ESTABLE del inventario sobrante.
+    // Usamos el ID o el style como factor pseudo-aleatorio para que se vea mezclado, pero sin romper la paginación.
+    remainingProducts.sort((a, b) => ((a.style || a.id) > (b.style || b.id) ? 1 : -1));
+
+    // Retornamos el orden final
+    return [...topCaps, ...topBags, ...topPolos, ...remainingProducts];
+  };
+
+  // 🔥 FETCH 2: CARGAMOS, ORDENAMOS GLOBALMENTE Y LUEGO PAGINAMOS
   useEffect(() => {
     async function fetchProducts() {
       setLoading(true);
@@ -156,7 +197,7 @@ function ProductsContent() {
       try {
         const isDeepFiltering = selectedSizes.length > 0 || selectedColors.length > 0;
         const from = (currentPage - 1) * ITEMS_PER_PAGE;
-        const to = from + ITEMS_PER_PAGE - 1;
+        const to = from + ITEMS_PER_PAGE; // Punto de corte final para Slice
 
         let matchingStyles: string[] = [];
         let styleToImageMap = new Map<string, string>(); 
@@ -221,9 +262,8 @@ function ProductsContent() {
           matchingStyles = matchingStyles.slice(0, 800); 
         }
 
-        let query = supabase
-          .from("products_unique_styles")
-          .select("*", { count: "exact" });
+        // 🟢 TRAEMOS TODOS LOS PRODUCTOS PARA ORDENARLOS CORRECTAMENTE EN JS ANTES DE MOSTRARLOS
+        let query = supabase.from("products_unique_styles").select("*");
 
         if (selectedCategory) query = query.eq("category", selectedCategory);
         if (selectedBrand) query = query.eq("brand", selectedBrand);
@@ -232,21 +272,25 @@ function ProductsContent() {
           query = query.in("style", matchingStyles);
         }
 
-        query = query.range(from, to);
+        query = query.limit(5000); // Límite alto para abarcar toda la colección y poder ordenar
         
-        const { data, count, error } = await query;
+        const { data, error } = await query;
         if (error) throw error;
         
-        if (count !== null) setTotalProducts(count);
-        
         if (data) {
-          const customizedData = data.map(item => {
+          let customizedData = data.map(item => {
             if (isDeepFiltering && styleToImageMap.has(item.style)) {
               return { ...item, image_url: styleToImageMap.get(item.style) };
             }
             return item;
           });
-          setProducts(customizedData);
+          
+          // 🔥 1. APLICAMOS LA REGLA: 9 Caps -> 9 Bags -> 9 Polos -> Resto Mixto
+          customizedData = organizeProducts(customizedData);
+
+          // 🔥 2. FIJAMOS EL TOTAL REAL Y DIVIDIMOS LA LISTA ORDENADA PARA LA PÁGINA ACTUAL
+          setTotalProducts(customizedData.length);
+          setProducts(customizedData.slice(from, to));
         }
 
       } catch (err: any) {
