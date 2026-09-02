@@ -59,6 +59,9 @@ export default function AdminDashboard() {
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
 
+  // 🔥 ESTADO PARA GUARDAR LOS SLUGS REALES DINÁMICAMENTE
+  const [realSlugs, setRealSlugs] = useState<Record<string, string>>({});
+
   const [footerData, setFooterData] = useState({
     companyName: "Fieldstone Embroidery Store",
     address: "Santo Domingo, Distrito Nacional\nDominican Republic",
@@ -286,9 +289,24 @@ export default function AdminDashboard() {
     } catch (err: any) { alert("Error deleting subscriber: " + err.message); }
   };
 
-  const handleOpenOrder = (order: any) => {
+  // 🔥 ACTUALIZADO: Buscamos el Slug real cuando se abre la orden
+  const handleOpenOrder = async (order: any) => {
     setSelectedOrder(order);
     setTrackingUrlInput("");
+
+    // Buscar slugs en la tabla 'products' usando los IDs de esta orden
+    if (order.order_items && order.order_items.length > 0) {
+      const productIds = order.order_items.map((item: any) => item.product_id).filter(Boolean);
+      if (productIds.length > 0) {
+        const { data } = await supabase.from('products').select('id, slug').in('id', productIds);
+        if (data) {
+          const newSlugs: Record<string, string> = {};
+          data.forEach(p => { newSlugs[p.id] = p.slug; });
+          setRealSlugs(prev => ({ ...prev, ...newSlugs }));
+        }
+      }
+    }
+
     if (unseenOrders.some(o => o.id === order.id)) {
       const updatedUnseen = unseenOrders.filter(o => o.id !== order.id);
       setUnseenOrders(updatedUnseen);
@@ -315,7 +333,6 @@ export default function AdminDashboard() {
     } catch (err) { console.error(err); }
   };
 
-  // 🔥 Añadimos "ready_for_pickup" al array que activa la advertencia de correo
   const handleStatusChangeClick = (order: any, newStatus: string) => {
     if (['shipped', 'delivered', 'completed', 'ready_for_pickup'].includes(newStatus)) {
       setPendingStatusChange({ order, newStatus });
@@ -679,7 +696,7 @@ export default function AdminDashboard() {
                           <div className="flex items-center gap-1.5 mb-2">
                              <div className={`w-2 h-2 rounded-full shadow-sm ${order.payment_id ? 'bg-blue-500' : 'bg-amber-400'}`}></div>
                              <p className={`text-[10px] font-black uppercase tracking-widest ${order.payment_id ? 'text-blue-700' : 'text-amber-700'}`}>
-                               CLOVER ID: {order.payment_id || "PENDIENTE"}
+                               STRIPE ID: {order.payment_id || "PENDIENTE"}
                              </p>
                           </div>
 
@@ -691,7 +708,6 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-6 text-sm font-black text-black">${Number(order.total_amount).toFixed(2)}</td>
                         <td className="p-6">
-                          {/* 🔥 Añadimos ready_for_pickup a las opciones */}
                           <select 
                             value={order.order_status} onChange={(e) => handleStatusChangeClick(order, e.target.value)}
                             className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50"
@@ -1128,7 +1144,7 @@ export default function AdminDashboard() {
                         Page {currentFormPage} of {totalContactPages}
                       </span>
                       <button 
-                        onClick={() => setCurrentFormPage(prev => Math.min(prev + 1, totalContactPages))}
+                        onClick={() => setCurrentFormPage(prev => Math.min(currentFormPage + 1, totalContactPages))}
                         disabled={currentFormPage === totalContactPages}
                         className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                       >
@@ -1323,25 +1339,28 @@ export default function AdminDashboard() {
               <div>
                 <h4 className="text-sm font-black uppercase tracking-widest text-black mb-4 border-b border-gray-200 pb-2">Products ({selectedOrder.order_items?.length || 0})</h4>
                 <div className="space-y-4">
-                  {selectedOrder.order_items?.map((item: any) => (
-                    <div key={item.id} className="p-4 border border-gray-300 rounded-2xl flex gap-6 items-start bg-gray-50 shadow-sm">
-                      {item.custom_logo_url ? (
-                        <div className="relative w-20 h-20 bg-white rounded-xl border border-gray-300 p-1 flex-shrink-0 group">
-                          <img src={item.custom_logo_url} alt="Logo" className="w-full h-full object-contain" />
-                          <a href={item.custom_logo_url} target="_blank" rel="noopener noreferrer" download={`logo-${item.product_id}`} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl" title="Download Logo"><Download size={20} className="text-white" /></a>
-                        </div>
-                      ) : (<div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center flex-shrink-0 text-[9px] font-black text-gray-500 uppercase border border-gray-300">No Logo</div>)}
-                      <div className="flex-1">
-                        <Link href={`/products/${item.product_id}`} target="_blank" className="text-sm font-black text-black uppercase tracking-tight hover:text-blue-600 hover:underline transition-colors block w-fit">{item.product_name}</Link>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
-                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Size / Color:</span><p className="text-xs font-bold text-gray-900">{item.size} / {item.color}</p></div>
-                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Qty & Price:</span><p className="text-xs font-bold text-gray-900">{item.quantity} x ${Number(item.unit_price).toFixed(2)}</p></div>
-                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Decoration:</span><p className="text-xs font-bold text-gray-900">{item.decoration_method}</p></div>
-                          <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Locations:</span><p className="text-xs font-bold text-gray-900">{item.location}</p></div>
+                  {selectedOrder.order_items?.map((item: any) => {
+                    const productSlug = realSlugs[item.product_id] || item.slug || item.product_id;
+                    return (
+                      <div key={item.id} className="p-4 border border-gray-300 rounded-2xl flex gap-6 items-start bg-gray-50 shadow-sm">
+                        {item.custom_logo_url ? (
+                          <div className="relative w-20 h-20 bg-white rounded-xl border border-gray-300 p-1 flex-shrink-0 group">
+                            <img src={item.custom_logo_url} alt="Logo" className="w-full h-full object-contain" />
+                            <a href={item.custom_logo_url} target="_blank" rel="noopener noreferrer" download={`logo-${item.product_id}`} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl" title="Download Logo"><Download size={20} className="text-white" /></a>
+                          </div>
+                        ) : (<div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center flex-shrink-0 text-[9px] font-black text-gray-500 uppercase border border-gray-300">No Logo</div>)}
+                        <div className="flex-1">
+                          <Link href={`/products/${productSlug}`} target="_blank" className="text-sm font-black text-black uppercase tracking-tight hover:text-blue-600 hover:underline transition-colors block w-fit">{item.product_name}</Link>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+                            <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Size / Color:</span><p className="text-xs font-bold text-gray-900">{item.size} / {item.color}</p></div>
+                            <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Qty & Price:</span><p className="text-xs font-bold text-gray-900">{item.quantity} x ${Number(item.unit_price).toFixed(2)}</p></div>
+                            <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Decoration:</span><p className="text-xs font-bold text-gray-900">{item.decoration_method}</p></div>
+                            <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Locations:</span><p className="text-xs font-bold text-gray-900">{item.location}</p></div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>

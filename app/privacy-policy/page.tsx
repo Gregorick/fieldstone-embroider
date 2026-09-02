@@ -37,7 +37,7 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="text-xl font-bold mb-3 text-black">2. Payment Processing & Security</h2>
             <p>
-              We take your financial security very seriously. All online payments are processed securely through our authorized payment gateway (Clover). <strong className="text-black">Fieldstone Embroidery does not store, process, or have direct access to your raw credit card numbers.</strong> Your sensitive payment data is encrypted and handled directly by the payment processor in compliance with strict PCI-DSS standards.
+              We take your financial security very seriously. All online payments are processed securely through our authorized payment gateway (Stripe). <strong className="text-black">Fieldstone Embroidery does not store, process, or have direct access to your raw credit card numbers.</strong> Your sensitive payment data is encrypted and handled directly by the payment processor in compliance with strict PCI-DSS standards.
             </p>
           </section>
 
