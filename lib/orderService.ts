@@ -9,6 +9,12 @@ export async function createCompleteOrder(
     total: number; 
     shipping_method?: string; 
     shipping_cost?: number; 
+    // 🔥 Añadimos los campos de dirección
+    shipping_address?: string;
+    shipping_city?: string;
+    shipping_state?: string;
+    shipping_zip?: string;
+    shipping_phone?: string;
   }, 
   userId: string | null
 ) {
@@ -44,7 +50,7 @@ export async function createCompleteOrder(
       logoPublicUrl = publicUrlData.publicUrl;
     }
 
-    // 3. Crear la Orden Principal (Incluyendo método y costo de envío)
+    // 3. Crear la Orden Principal (Incluyendo método, costo de envío y DIRECCIÓN)
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       user_id: userId || null,
       customer_email: customerDetails.email,
@@ -53,7 +59,13 @@ export async function createCompleteOrder(
       payment_status: 'paid',
       order_status: 'processing',
       shipping_method: customerDetails.shipping_method || 'shipping',
-      shipping_cost: customerDetails.shipping_cost || 0
+      shipping_cost: customerDetails.shipping_cost || 0,
+      // 🔥 Guardamos los datos de la dirección en la BD
+      shipping_address: customerDetails.shipping_address || null,
+      shipping_city: customerDetails.shipping_city || null,
+      shipping_state: customerDetails.shipping_state || null,
+      shipping_zip: customerDetails.shipping_zip || null,
+      shipping_phone: customerDetails.shipping_phone || null
     }).select().single();
 
     if (orderError) throw new Error(`Error creating order: ${orderError.message}`);

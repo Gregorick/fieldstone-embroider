@@ -48,6 +48,8 @@ export default function CheckoutPage() {
   
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
+  const [deliveryMethod, setDeliveryMethod] = useState<"shipping" | "pickup">("shipping");
+
   const [formData, setFormData] = useState({
     email: "",
     firstName: "",
@@ -59,13 +61,23 @@ export default function CheckoutPage() {
     phone: ""
   });
 
-  const feeThreshold = 300;
-  const feeAmount = 65;
+  const [feeThreshold, setFeeThreshold] = useState<number>(300);
+  const [feeAmount, setFeeAmount] = useState<number>(65);
+  const [pricingTiers, setPricingTiers] = useState<any[]>([]);
+
   const appliesSmallOrderFee = cartTotal > 0 && cartTotal < feeThreshold;
   const currentFee = appliesSmallOrderFee ? feeAmount : 0;
 
   useEffect(() => {
-    async function fetchUserData() {
+    async function fetchUserDataAndSettings() {
+      const { data: settings } = await supabase.from("store_settings").select("small_order_fee_threshold, small_order_fee_amount, decoration_tiers").eq("id", "default").maybeSingle();
+      
+      if (settings) {
+        if (settings.small_order_fee_threshold !== undefined) setFeeThreshold(settings.small_order_fee_threshold);
+        if (settings.small_order_fee_amount !== undefined) setFeeAmount(settings.small_order_fee_amount);
+        if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
@@ -104,7 +116,7 @@ export default function CheckoutPage() {
         }
       }
     }
-    fetchUserData();
+    fetchUserDataAndSettings();
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,7 +161,28 @@ export default function CheckoutPage() {
   };
 
   const isPickupEligible = checkIsLocalPickup(formData.zipCode);
-  const shippingCost = isPickupEligible ? 0 : 40;
+
+  useEffect(() => {
+    if (!isPickupEligible) {
+      setDeliveryMethod("shipping");
+    } else if (deliveryMethod === "shipping") {
+      setDeliveryMethod("pickup");
+    }
+  }, [isPickupEligible]);
+
+  const totalQuantity = cartItems.reduce((acc, item) => acc + (Number(item.quantity) || 1), 0);
+  let currentShippingCost = 40; 
+  
+  if (pricingTiers && pricingTiers.length > 0) {
+    const currentTier = pricingTiers.find(t => totalQuantity >= Number(t.min) && totalQuantity <= Number(t.max));
+    if (currentTier && currentTier.shipping !== undefined) {
+      currentShippingCost = Number(currentTier.shipping);
+    } else if (pricingTiers[pricingTiers.length - 1].shipping !== undefined) {
+      currentShippingCost = Number(pricingTiers[pricingTiers.length - 1].shipping);
+    }
+  }
+  
+  const shippingCost = deliveryMethod === "pickup" ? 0 : currentShippingCost;
   const finalTotal = cartTotal + shippingCost + currentFee;
 
   const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -160,7 +193,7 @@ export default function CheckoutPage() {
     setAddressError(null);
 
     try {
-      if (!isPickupEligible) {
+      if (deliveryMethod === "shipping") {
         const verifyRes = await fetch('/fieldstone-embroider/api/verify-address', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -184,14 +217,20 @@ export default function CheckoutPage() {
 
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
+      // 🔥 AHORA SÍ ENVIAMOS LA DIRECCIÓN COMPLETA
       const orderResult = await createCompleteOrder(
         cartItems,
         { 
           name: fullName, 
           email: formData.email, 
           total: finalTotal,
-          shipping_method: isPickupEligible ? "pickup" : "shipping",
-          shipping_cost: shippingCost 
+          shipping_method: deliveryMethod,
+          shipping_cost: shippingCost,
+          shipping_address: formData.address,
+          shipping_city: formData.city,
+          shipping_state: formData.state,
+          shipping_zip: formData.zipCode,
+          shipping_phone: formData.phone
         },
         userId
       );
@@ -372,6 +411,44 @@ export default function CheckoutPage() {
                     <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} required className="w-full text-black bg-white border border-gray-200 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors" />
                   </div>
                 </div>
+
+                {/* 🔥 SELECTOR DE ENVÍO / RECOGIDA QUE APARECE SOLO SI ES ELEGIBLE */}
+                {isPickupEligible && (
+                  <div className="mt-6 p-6 bg-white border border-gray-200 rounded-2xl animate-in fade-in slide-in-from-top-2 shadow-sm">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-black mb-4">Select Delivery Method</h3>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      
+                      <label className={`flex-1 flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition-all ${deliveryMethod === "shipping" ? "border-black bg-gray-50 shadow-inner" : "border-gray-100 bg-white hover:border-gray-300"}`}>
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="radio" 
+                            name="deliveryMethod" 
+                            checked={deliveryMethod === "shipping"} 
+                            onChange={() => setDeliveryMethod("shipping")} 
+                            className="w-4 h-4 accent-black cursor-pointer" 
+                          />
+                          <span className="text-[11px] font-bold text-black uppercase tracking-widest">Ship to Address</span>
+                        </div>
+                        <Truck size={18} className={deliveryMethod === "shipping" ? "text-black" : "text-gray-400"} />
+                      </label>
+
+                      <label className={`flex-1 flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition-all ${deliveryMethod === "pickup" ? "border-[#059669] bg-[#ecfdf5] shadow-inner" : "border-gray-100 bg-white hover:border-gray-300"}`}>
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="radio" 
+                            name="deliveryMethod" 
+                            checked={deliveryMethod === "pickup"} 
+                            onChange={() => setDeliveryMethod("pickup")} 
+                            className="w-4 h-4 accent-[#059669] cursor-pointer" 
+                          />
+                          <span className="text-[11px] font-bold text-[#065f46] uppercase tracking-widest">Local Pickup (Free)</span>
+                        </div>
+                        <MapPin size={18} className={deliveryMethod === "pickup" ? "text-[#059669]" : "text-gray-400"} />
+                      </label>
+
+                    </div>
+                  </div>
+                )}
               </section>
 
               <section>
@@ -442,18 +519,18 @@ export default function CheckoutPage() {
 
               <div className="flex justify-between text-[13px] font-bold text-gray-600">
                 <span className="flex items-center gap-2">
-                  {isPickupEligible ? "Local Pickup" : "Shipping"} 
-                  {isPickupEligible ? <MapPin size={14}/> : <Truck size={14}/>}
+                  {deliveryMethod === "pickup" ? "Local Pickup" : "Shipping"} 
+                  {deliveryMethod === "pickup" ? <MapPin size={14}/> : <Truck size={14}/>}
                 </span>
-                <span className="text-black">{isPickupEligible ? "FREE" : `$${shippingCost.toFixed(2)}`}</span>
+                <span className="text-black">{deliveryMethod === "pickup" ? "FREE" : `$${shippingCost.toFixed(2)}`}</span>
               </div>
             </div>
 
-            {isPickupEligible && formData.zipCode.length > 4 && (
+            {deliveryMethod === "pickup" && (
               <div className="mb-6 p-4 bg-[#ecfdf5] border border-[#a7f3d0] rounded-xl flex items-start gap-3 animate-in fade-in zoom-in duration-300">
                 <MapPin size={24} className="text-[#059669] flex-shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-[11px] font-black uppercase tracking-widest text-[#065f46] mb-1">Will Call / Pickup Available</h4>
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-[#065f46] mb-1">Will Call / Pickup Ready</h4>
                   <p className="text-xs font-medium text-[#047857] leading-relaxed">
                     We will call you when your order is ready for pickup at our facility:<br/>
                     <strong className="block mt-2 text-black">104 Kingston St<br/>Lawrence, MA 01843</strong>

@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     if (orderId) {
       console.log(`Procesando orden ${orderId} con Stripe ID: ${paymentIntentId}`);
       
-      // 1. Actualizamos la orden en Supabase
+      // 1. Actualizamos la orden en Supabase y RECUPERAMOS LOS DATOS
       const { data: updatedOrder, error: updateError } = await supabase
         .from('orders')
         .update({ 
@@ -63,11 +63,45 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "No se encontro la orden en Supabase" }, { status: 404 });
       }
 
-      // 2. OBTENER LOS PRODUCTOS PARA EL CORREO
+      // 2. OBTENER DATOS DEL CLIENTE Y ENVÍO PARA EL CORREO
       const clientEmailAddress = updatedOrder.customer_email || 'correo_no_registrado@ejemplo.com';
       const clientName = updatedOrder.customer_name || 'Valued Customer';
       const totalToDisplay = Number(updatedOrder.total_amount).toFixed(2);
       const shortOrderId = orderId.split('-')[0].toUpperCase();
+
+      // 🔥 LÓGICA DE DIRECCIÓN HTML PARA LOS CORREOS
+      const shippingMethod = updatedOrder.shipping_method || 'shipping';
+      
+      let deliveryHtml = '';
+      if (shippingMethod === 'pickup') {
+        deliveryHtml = `
+          <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 16px; margin-bottom: 25px;">
+            <h3 style="margin: 0 0 8px 0; color: #065f46; font-size: 14px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">📍 Will Call / Pickup</h3>
+            <p style="margin: 0; color: #047857; font-size: 14px; line-height: 1.5;">
+              Local Pickup at Fieldstone Embroidery<br/>
+              <strong>104 Kingston St, Lawrence, MA 01843</strong>
+            </p>
+          </div>
+        `;
+      } else {
+        const address = updatedOrder.shipping_address || 'Address not provided';
+        const city = updatedOrder.shipping_city || '';
+        const state = updatedOrder.shipping_state || '';
+        const zip = updatedOrder.shipping_zip || '';
+        const phone = updatedOrder.shipping_phone || 'No phone provided';
+
+        deliveryHtml = `
+          <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 25px;">
+            <h3 style="margin: 0 0 8px 0; color: #374151; font-size: 14px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">🚚 Delivery Address</h3>
+            <p style="margin: 0; color: #4b5563; font-size: 14px; line-height: 1.5;">
+              <strong>${clientName}</strong><br/>
+              ${address}<br/>
+              ${city}, ${state} ${zip}<br/>
+              📞 ${phone}
+            </p>
+          </div>
+        `;
+      }
       
       let dbItems: any[] = [];
       
@@ -89,7 +123,6 @@ export async function POST(req: Request) {
           const pSize = item.size || '-';
           const pColor = item.color || '';
           const pMethod = item.decoration_method || '-';
-          // 🟢 ESTE CAMPO AHORA INCLUIRÁ TODAS LAS LOCACIONES (Ej: Loc1 + Loc2 + Loc3)
           const pLocation = item.location || '-'; 
           const pPrice = Number(item.unit_price).toFixed(2);
           const comments = item.extra_comments || '';
@@ -163,7 +196,11 @@ export async function POST(req: Request) {
               <div style="padding: 30px;">
                 <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
                 <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
+                
+                ${deliveryHtml} <!-- 🔥 INYECCIÓN DE LA DIRECCIÓN DEL CLIENTE -->
+
                 <div style="margin-bottom: 25px;">${unifiedItemsHtml}</div>
+                
                 <div style="text-align: right; padding: 20px 0; border-top: 2px solid #f3f4f6; margin-bottom: 25px;">
                   <span style="font-size: 16px; color: #374151; font-weight: 900; text-transform: uppercase;">Total Pagado:</span>
                   <span style="font-size: 24px; color: #10b981; font-weight: 900; margin-left: 15px;">$${totalToDisplay}</span>
@@ -212,6 +249,9 @@ export async function POST(req: Request) {
                     </tr>
                   </table>
                 </div>
+
+                ${deliveryHtml} <!-- 🔥 INYECCIÓN DE LA DIRECCIÓN PARA EL ADMIN -->
+
                 <h3 style="color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">
                   Products (${dbItems.length})
                 </h3>

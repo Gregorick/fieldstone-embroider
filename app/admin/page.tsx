@@ -9,16 +9,16 @@ import {
   LogOut, Search, Eye, Check, X, Camera, Save, Lock, Grip,
   Package, Download, BarChart3, Trash2, DollarSign, Truck,
   ChevronLeft, ChevronRight, BellRing, Send, AlertTriangle,
-  MessageSquare, PanelBottom 
+  MessageSquare, PanelBottom, MapPin
 } from "lucide-react";
 
 const DEFAULT_TIERS = [
-  { min: 1, max: 11, emb: 12.45, sp: 8.00, dtf: 10.50 },
-  { min: 12, max: 23, emb: 10.45, sp: 7.00, dtf: 9.45 },
-  { min: 24, max: 71, emb: 9.00, sp: 6.00, dtf: 8.45 },
-  { min: 72, max: 143, emb: 8.00, sp: 5.00, dtf: 7.45 },
-  { min: 144, max: 287, emb: 7.00, sp: 4.00, dtf: 6.45 },
-  { min: 288, max: 499, emb: 6.00, sp: 3.00, dtf: 5.45 },
+  { min: 1, max: 11, emb: 12.45, sp: 8.00, dtf: 10.50, shipping: 40 },
+  { min: 12, max: 23, emb: 10.45, sp: 7.00, dtf: 9.45, shipping: 40 },
+  { min: 24, max: 71, emb: 9.00, sp: 6.00, dtf: 8.45, shipping: 40 },
+  { min: 72, max: 143, emb: 8.00, sp: 5.00, dtf: 7.45, shipping: 40 },
+  { min: 144, max: 287, emb: 7.00, sp: 4.00, dtf: 6.45, shipping: 40 },
+  { min: 288, max: 499, emb: 6.00, sp: 3.00, dtf: 5.45, shipping: 40 },
 ];
 
 export default function AdminDashboard() {
@@ -47,7 +47,6 @@ export default function AdminDashboard() {
   const [pendingStatusChange, setPendingStatusChange] = useState<{order: any, newStatus: string} | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
-  // --- SHOP FILTERS & DRAG AND DROP STATES ---
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [visibleCategories, setVisibleCategories] = useState<string[]>([]);
   const [allBrands, setAllBrands] = useState<string[]>([]);
@@ -137,7 +136,6 @@ export default function AdminDashboard() {
       const savedCats = settings.visible_categories || fetchedCats;
       const savedBrands = settings.visible_brands || fetchedBrands;
 
-      // Fusionar asegurando que aparezcan nuevas categorías/marcas si se agregaron a la BD
       const mergedCats = Array.from(new Set([...savedCats, ...fetchedCats]));
       const mergedBrands = Array.from(new Set([...savedBrands, ...fetchedBrands]));
 
@@ -146,8 +144,8 @@ export default function AdminDashboard() {
       setVisibleCategories(settings.visible_categories || mergedCats);
       setVisibleBrands(settings.visible_brands || mergedBrands);
 
-      if (settings.small_order_fee_threshold) setFeeThreshold(settings.small_order_fee_threshold);
-      if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
+      if (settings.small_order_fee_threshold !== undefined) setFeeThreshold(settings.small_order_fee_threshold);
+      if (settings.small_order_fee_amount !== undefined) setFeeAmount(settings.small_order_fee_amount);
       if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
       
       setFooterData({
@@ -182,7 +180,6 @@ export default function AdminDashboard() {
     setCurrentPage(1);
   }, [searchQuery]);
 
-  // --- DRAG & DROP HANDLERS ---
   const handleDragStartCat = (index: number) => { setDraggingCatIndex(index); };
   const handleDragEnterCat = (index: number) => {
     if (draggingCatIndex === null || draggingCatIndex === index) return;
@@ -215,14 +212,13 @@ export default function AdminDashboard() {
   const saveSettings = async () => {
     setLoading(true);
     
-    // 🔥 CORRECCIÓN CLAVE: Cruzamos la lista maestra ORDENADA con los elementos que tienen el CHECK ACTIVO.
     const finalCategories = allCategories.filter(cat => visibleCategories.includes(cat));
     const finalBrands = allBrands.filter(brand => visibleBrands.includes(brand));
 
     const { error } = await supabase.from("store_settings").upsert({ 
       id: "default", 
-      visible_categories: finalCategories, // Guarda el orden correcto SOLO de las activas
-      visible_brands: finalBrands,         // Guarda el orden correcto SOLO de las activas
+      visible_categories: finalCategories, 
+      visible_brands: finalBrands,         
       small_order_fee_threshold: feeThreshold, 
       small_order_fee_amount: feeAmount, 
       decoration_tiers: pricingTiers,
@@ -319,8 +315,9 @@ export default function AdminDashboard() {
     } catch (err) { console.error(err); }
   };
 
+  // 🔥 Añadimos "ready_for_pickup" al array que activa la advertencia de correo
   const handleStatusChangeClick = (order: any, newStatus: string) => {
-    if (['shipped', 'delivered', 'completed'].includes(newStatus)) {
+    if (['shipped', 'delivered', 'completed', 'ready_for_pickup'].includes(newStatus)) {
       setPendingStatusChange({ order, newStatus });
     } else {
       updateOrderStatus(order.id, newStatus);
@@ -452,7 +449,7 @@ export default function AdminDashboard() {
     } catch (err: any) { alert("Error: " + err.message); } finally { setLoading(false); }
   };
 
-  const handleTierPriceChange = (index: number, method: 'emb' | 'sp', value: string) => { 
+  const handleTierPriceChange = (index: number, method: 'emb' | 'sp' | 'shipping', value: string) => { 
     const newTiers = [...pricingTiers]; 
     newTiers[index][method] = Number(value); 
     setPricingTiers(newTiers); 
@@ -694,11 +691,16 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-6 text-sm font-black text-black">${Number(order.total_amount).toFixed(2)}</td>
                         <td className="p-6">
+                          {/* 🔥 Añadimos ready_for_pickup a las opciones */}
                           <select 
                             value={order.order_status} onChange={(e) => handleStatusChangeClick(order, e.target.value)}
                             className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50"
                           >
-                            <option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="completed">Completed</option>
+                            <option value="processing">Processing</option>
+                            <option value="ready_for_pickup">Ready for Pickup</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="completed">Completed</option>
                           </select>
                         </td>
                         <td className="p-6 text-right">
@@ -789,6 +791,7 @@ export default function AdminDashboard() {
                     <th className="p-6">Quantity Range (Min - Max)</th>
                     <th className="p-6">Embroidery (EMB) Price Added</th>
                     <th className="p-6">Screen Print (SP) Price Added</th>
+                    <th className="p-6">Shipping Cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -824,6 +827,18 @@ export default function AdminDashboard() {
                           <input type="number" step="0.01" value={tier.sp} onChange={(e) => handleTierPriceChange(idx, 'sp', e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
                         </div>
                       </td>
+                      <td className="p-6">
+                        <div className="relative w-32">
+                          <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            value={tier.shipping ?? 40} 
+                            onChange={(e) => handleTierPriceChange(idx, 'shipping', e.target.value)} 
+                            className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-3 py-2 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"
+                          />
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -832,7 +847,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🟢 PESTAÑA: SHOP FILTERS (CON DRAG AND DROP Y GUARDADO CORRECTO) */}
+        {/* 🟢 PESTAÑA: SHOP FILTERS */}
         {activeTab === "categories" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
             <div className="flex justify-between items-center mb-8">
@@ -1176,7 +1191,7 @@ export default function AdminDashboard() {
                         Page {currentFormPage} of {totalNewsletterPages}
                       </span>
                       <button 
-                        onClick={() => setCurrentFormPage(prev => Math.min(prev + 1, totalNewsletterPages))}
+                        onClick={() => setCurrentFormPage(prev => Math.min(currentFormPage + 1, totalNewsletterPages))}
                         disabled={currentFormPage === totalNewsletterPages}
                         className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                       >
@@ -1187,6 +1202,25 @@ export default function AdminDashboard() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === "profile" && (
+          <div className="animate-in fade-in duration-500 max-w-2xl">
+            <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
+            <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-200 space-y-8">
+              <div className="flex items-center gap-8 pb-8 border-b border-gray-200">
+                <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-300">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
+                <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-500 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name</label><input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name</label><input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                <div className="col-span-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label><input type="email" disabled value={adminUser?.email} className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed"/></div>
+                <div className="col-span-2 pt-4"><h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2"><Lock size={14} /> Security</h4><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">New Password (leave blank to keep current)</label><input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+              </div>
+              <div className="pt-6"><button onClick={updateAdminProfile} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl">Save Admin Profile</button></div>
+            </div>
           </div>
         )}
 
@@ -1255,6 +1289,26 @@ export default function AdminDashboard() {
                 )}
               </div>
 
+              {/* 🔥 NUEVO BLOQUE DE DIRECCIÓN */}
+              <div className="bg-gray-50 border border-gray-300 p-6 rounded-2xl shadow-sm mt-4">
+                <h4 className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2 mb-2">
+                  <MapPin size={18} /> Delivery Address
+                </h4>
+                {selectedOrder.shipping_method === 'pickup' ? (
+                  <p className="text-sm font-bold text-blue-800">
+                    Local Pickup at Fieldstone Embroidery<br/>
+                    <span className="text-xs font-medium text-gray-600">104 Kingston St, Lawrence, MA 01843</span>
+                  </p>
+                ) : (
+                  <p className="text-sm font-bold text-gray-800">
+                    {selectedOrder.shipping_address || "Address not provided"} <br/>
+                    <span className="text-xs font-medium text-gray-600">
+                      {selectedOrder.shipping_city} {selectedOrder.shipping_state}, {selectedOrder.shipping_zip}
+                    </span>
+                  </p>
+                )}
+              </div>
+
               <div className={`grid grid-cols-2 ${selectedOrder.payment_id ? 'md:grid-cols-3' : ''} gap-8 p-6 bg-blue-50/50 border border-blue-200 rounded-2xl`}>
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Customer Name</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_name}</p></div>
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Contact Email</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_email}</p></div>
@@ -1297,7 +1351,11 @@ export default function AdminDashboard() {
               <div className="flex items-center gap-3">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-600">Quick Status Update:</span>
                 <select value={selectedOrder.order_status} onChange={(e) => handleStatusChangeClick(selectedOrder, e.target.value)} className="px-4 py-3 bg-white border border-gray-300 rounded-xl text-xs font-bold uppercase tracking-widest text-black outline-none focus:border-black focus:ring-1 focus:ring-black cursor-pointer shadow-sm hover:bg-gray-50 transition-all">
-                  <option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="completed">Completed</option>
+                  <option value="processing">Processing</option>
+                  <option value="ready_for_pickup">Ready for Pickup</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="completed">Completed</option>
                 </select>
               </div>
             </div>
