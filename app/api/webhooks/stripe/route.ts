@@ -69,16 +69,16 @@ export async function POST(req: Request) {
       const totalToDisplay = Number(updatedOrder.total_amount).toFixed(2);
       const shortOrderId = orderId.split('-')[0].toUpperCase();
 
-      // 🔥 LÓGICA DE DIRECCIÓN HTML PARA LOS CORREOS (Con el texto actualizado)
+      // 🔥 LÓGICA DE DIRECCIÓN HTML LIMPIA (Sin referencias a llamadas)
       const shippingMethod = updatedOrder.shipping_method || 'shipping';
       
       let deliveryHtml = '';
       if (shippingMethod === 'pickup') {
         deliveryHtml = `
           <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 16px; margin-bottom: 25px;">
-            <h3 style="margin: 0 0 8px 0; color: #065f46; font-size: 14px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">📍 Will Call / Pickup</h3>
+            <h3 style="margin: 0 0 8px 0; color: #065f46; font-size: 14px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">📍 Local Pickup Order</h3>
             <p style="margin: 0; color: #047857; font-size: 14px; line-height: 1.5;">
-              We will notify you when your order is ready for pickup at our facility:<br/>
+              We will notify you via email as soon as your order is ready for pickup at our facility:<br/>
               <strong>104 Kingston St, Lawrence, MA 01843</strong>
             </p>
           </div>
