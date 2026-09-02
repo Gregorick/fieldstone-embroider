@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       const totalToDisplay = Number(updatedOrder.total_amount).toFixed(2);
       const shortOrderId = orderId.split('-')[0].toUpperCase();
 
-      // 🔥 LÓGICA DE DIRECCIÓN HTML PARA LOS CORREOS
+      // 🔥 LÓGICA DE DIRECCIÓN HTML PARA LOS CORREOS (Con el texto actualizado)
       const shippingMethod = updatedOrder.shipping_method || 'shipping';
       
       let deliveryHtml = '';
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
           <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 16px; margin-bottom: 25px;">
             <h3 style="margin: 0 0 8px 0; color: #065f46; font-size: 14px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">📍 Will Call / Pickup</h3>
             <p style="margin: 0; color: #047857; font-size: 14px; line-height: 1.5;">
-              Local Pickup at Fieldstone Embroidery<br/>
+              We will notify you when your order is ready for pickup at our facility:<br/>
               <strong>104 Kingston St, Lawrence, MA 01843</strong>
             </p>
           </div>
@@ -197,7 +197,7 @@ export async function POST(req: Request) {
                 <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
                 <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
                 
-                ${deliveryHtml} <!-- 🔥 INYECCIÓN DE LA DIRECCIÓN DEL CLIENTE -->
+                ${deliveryHtml}
 
                 <div style="margin-bottom: 25px;">${unifiedItemsHtml}</div>
                 
@@ -250,7 +250,7 @@ export async function POST(req: Request) {
                   </table>
                 </div>
 
-                ${deliveryHtml} <!-- 🔥 INYECCIÓN DE LA DIRECCIÓN PARA EL ADMIN -->
+                ${deliveryHtml}
 
                 <h3 style="color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">
                   Products (${dbItems.length})
