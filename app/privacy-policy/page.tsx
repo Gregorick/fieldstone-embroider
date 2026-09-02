@@ -61,7 +61,7 @@ export default function PrivacyPolicyPage() {
             </p>
             <ul className="list-disc pl-6 mt-2 space-y-1">
               <li>Shipping carriers (e.g., USPS, UPS, FedEx) to deliver your orders.</li>
-              <li>Our secure payment processor (Clover) to facilitate transactions.</li>
+              <li>Our secure payment processor (Stripe) to facilitate transactions.</li>
             </ul>
             <p className="mt-2">
               These partners are obligated to keep your information confidential and use it only for the services they provide to us.
