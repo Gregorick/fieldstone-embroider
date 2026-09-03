@@ -262,23 +262,43 @@ function ProductsContent() {
           matchingStyles = matchingStyles.slice(0, 800); 
         }
 
-        // 🟢 TRAEMOS TODOS LOS PRODUCTOS PARA ORDENARLOS CORRECTAMENTE EN JS ANTES DE MOSTRARLOS
-        let query = supabase.from("products_unique_styles").select("*");
+        // 🟢 TRAEMOS TODOS LOS PRODUCTOS EN BLOQUES (BYPASS AL LÍMITE DE 1000 DE SUPABASE)
+        let allData: any[] = [];
+        let rangeStep = 1000;
+        let fromRow = 0;
+        let fetchMore = true;
 
-        if (selectedCategory) query = query.eq("category", selectedCategory);
-        if (selectedBrand) query = query.eq("brand", selectedBrand);
+        while (fetchMore) {
+          let query = supabase.from("products_unique_styles").select("*");
 
-        if (isDeepFiltering) {
-          query = query.in("style", matchingStyles);
+          if (selectedCategory) query = query.eq("category", selectedCategory);
+          if (selectedBrand) query = query.eq("brand", selectedBrand);
+
+          if (isDeepFiltering) {
+            query = query.in("style", matchingStyles);
+          }
+
+          const { data, error } = await query.range(fromRow, fromRow + rangeStep - 1);
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            allData.push(...data);
+            if (data.length < rangeStep) {
+              fetchMore = false;
+            } else {
+              fromRow += rangeStep;
+            }
+          } else {
+            fetchMore = false;
+          }
+
+          if (allData.length >= 5000) {
+            fetchMore = false;
+          }
         }
 
-        query = query.limit(5000); // Límite alto para abarcar toda la colección y poder ordenar
-        
-        const { data, error } = await query;
-        if (error) throw error;
-        
-        if (data) {
-          let customizedData = data.map(item => {
+        if (allData.length > 0) {
+          let customizedData = allData.map(item => {
             if (isDeepFiltering && styleToImageMap.has(item.style)) {
               return { ...item, image_url: styleToImageMap.get(item.style) };
             }
