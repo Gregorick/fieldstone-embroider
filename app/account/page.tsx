@@ -9,7 +9,7 @@ import Footer from "../components/Footer";
 import { 
   User, MapPin, Package, LogOut, Camera, Save, 
   Plus, Trash2, X, AlertTriangle, Star, Truck, 
-  ChevronLeft, ChevronRight 
+  ChevronLeft, ChevronRight, Eye, Copy, Check
 } from "lucide-react";
 
 export default function AccountPage() {
@@ -33,15 +33,18 @@ export default function AccountPage() {
     first_name: "", last_name: "", street: "", city: "", state: "", zip: "", phone: ""
   });
 
-  // Estado para almacenar las órdenes
+  // Estado para almacenar las órdenes y slugs
   const [orders, setOrders] = useState<any[]>([]);
+  const [realSlugs, setRealSlugs] = useState<Record<string, string>>({});
   
   // 🚀 ESTADOS PARA LA PAGINACIÓN DE ÓRDENES
   const [currentPage, setCurrentPage] = useState(1);
   const ordersPerPage = 10;
   
-  // Estado para el Lightbox del logo
+  // Estado para el Lightbox del logo y Modal de Trans. ID
   const [selectedLogoUrl, setSelectedLogoUrl] = useState<string | null>(null);
+  const [selectedTransId, setSelectedTransId] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
 
   // Ref para el input del avatar
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -70,7 +73,7 @@ export default function AccountPage() {
       // Cargar Direcciones
       fetchAddresses(user.id);
       
-      // Cargar Órdenes
+      // Cargar Órdenes y extraer los Slugs reales para los enlaces
       fetchOrders(user.id);
 
       setLoading(false);
@@ -96,7 +99,28 @@ export default function AccountPage() {
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
       
-    if (data) setOrders(data);
+    if (data) {
+      setOrders(data);
+      
+      // 🔥 Buscamos los slugs en la BD para que los enlaces de productos funcionen
+      const productIds = new Set<string>();
+      data.forEach(order => {
+        if (order.order_items) {
+          order.order_items.forEach((item: any) => {
+            if (item.product_id) productIds.add(item.product_id);
+          });
+        }
+      });
+      
+      if (productIds.size > 0) {
+        const { data: productsData } = await supabase.from('products').select('id, slug').in('id', Array.from(productIds));
+        if (productsData) {
+          const newSlugs: Record<string, string> = {};
+          productsData.forEach(p => { newSlugs[p.id] = p.slug; });
+          setRealSlugs(newSlugs);
+        }
+      }
+    }
   };
 
   // 🚀 LÓGICA DE PAGINACIÓN CALCULADA
@@ -230,6 +254,14 @@ export default function AccountPage() {
       alert(`Error uploading avatar: ${error.message}`);
     } finally {
       setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleCopyTransId = async () => {
+    if (selectedTransId) {
+      await navigator.clipboard.writeText(selectedTransId);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     }
   };
 
@@ -437,10 +469,22 @@ export default function AccountPage() {
                             <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Order ID</p>
                             <p className="text-xs font-black text-black uppercase">#{order.id.split('-')[0]}</p>
                           </div>
+                          
+                          {/* 🔥 NUEVO BOTÓN PARA TRANS. ID EVITANDO QUE ROMPA EL DISEÑO */}
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Trans. ID</p>
-                            <p className="text-xs font-bold text-gray-600 uppercase">{order.payment_id || "Procesando..."}</p>
+                            {order.payment_id ? (
+                              <button 
+                                onClick={() => setSelectedTransId(order.payment_id)}
+                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1 border border-gray-200"
+                              >
+                                <Eye size={12} /> View ID
+                              </button>
+                            ) : (
+                              <p className="text-xs font-bold text-amber-500 uppercase">Processing...</p>
+                            )}
                           </div>
+                          
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Date</p>
                             <p className="text-xs font-bold text-black">{new Date(order.created_at).toLocaleDateString()}</p>
@@ -488,45 +532,50 @@ export default function AccountPage() {
                         )}
                         
                         <div className="space-y-4">
-                          {order.order_items && order.order_items.map((item: any) => (
-                            <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                              <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-200 flex-shrink-0 shadow-sm">
-                                <Package size={20} className="text-gray-400" />
-                              </div>
-                              <div className="flex-1">
-                                <Link 
-                                  href={`/products/${item.product_id}`} 
-                                  className="text-xs font-black text-black uppercase tracking-tight hover:underline hover:text-blue-600 transition-all block w-fit"
-                                >
-                                  {item.product_name}
-                                </Link>
-                                <p className="text-[10px] font-bold text-gray-600 uppercase mt-1">
-                                  {item.size} • {item.color} • {item.decoration_method} • {item.location}
-                                </p>
-                              </div>
-
-                              <div className="flex items-center gap-4 sm:ml-auto">
-                                {item.custom_logo_url && (
-                                  <button 
-                                    onClick={() => setSelectedLogoUrl(item.custom_logo_url)}
-                                    className="w-10 h-10 bg-white border border-gray-300 rounded-md overflow-hidden hover:border-black transition-colors shadow-sm flex-shrink-0"
-                                    title="View Uploaded Logo"
+                          {order.order_items && order.order_items.map((item: any) => {
+                            // 🔥 SLUG REAL BUSCADO EN LA BD
+                            const productSlug = realSlugs[item.product_id] || item.slug || item.product_id;
+                            return (
+                              <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-200 flex-shrink-0 shadow-sm">
+                                  <Package size={20} className="text-gray-400" />
+                                </div>
+                                <div className="flex-1">
+                                  {/* 🔥 ENLACE ACTUALIZADO AL SLUG REAL */}
+                                  <Link 
+                                    href={`/products/${productSlug}`} 
+                                    className="text-xs font-black text-black uppercase tracking-tight hover:underline hover:text-blue-600 transition-all block w-fit"
                                   >
-                                    <img 
-                                      src={item.custom_logo_url} 
-                                      alt="Custom Logo" 
-                                      className="w-full h-full object-contain" 
-                                    />
-                                  </button>
-                                )}
+                                    {item.product_name}
+                                  </Link>
+                                  <p className="text-[10px] font-bold text-gray-600 uppercase mt-1">
+                                    {item.size} • {item.color} • {item.decoration_method} • {item.location}
+                                  </p>
+                                </div>
 
-                                <div className="text-right min-w-[60px]">
-                                  <p className="text-xs font-black text-black">Qty: {item.quantity}</p>
-                                  <p className="text-[10px] font-bold text-gray-600 mt-1">${Number(item.unit_price).toFixed(2)} ea.</p>
+                                <div className="flex items-center gap-4 sm:ml-auto">
+                                  {item.custom_logo_url && (
+                                    <button 
+                                      onClick={() => setSelectedLogoUrl(item.custom_logo_url)}
+                                      className="w-10 h-10 bg-white border border-gray-300 rounded-md overflow-hidden hover:border-black transition-colors shadow-sm flex-shrink-0"
+                                      title="View Uploaded Logo"
+                                    >
+                                      <img 
+                                        src={item.custom_logo_url} 
+                                        alt="Custom Logo" 
+                                        className="w-full h-full object-contain" 
+                                      />
+                                    </button>
+                                  )}
+
+                                  <div className="text-right min-w-[60px]">
+                                    <p className="text-xs font-black text-black">Qty: {item.quantity}</p>
+                                    <p className="text-[10px] font-bold text-gray-600 mt-1">${Number(item.unit_price).toFixed(2)} ea.</p>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         
                       </div>
@@ -572,6 +621,7 @@ export default function AccountPage() {
       </div>
       <Footer />
 
+      {/* LIGHTBOX PARA EL LOGO */}
       {selectedLogoUrl && (
         <div 
           className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200" 
@@ -594,6 +644,42 @@ export default function AccountPage() {
                 className="max-w-full max-h-full object-contain" 
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 MODAL PARA COPIAR EL TRANS ID LARGO */}
+      {selectedTransId && (
+        <div 
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200" 
+          onClick={() => setSelectedTransId(null)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center relative" 
+            onClick={e => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setSelectedTransId(null)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-black transition-colors bg-gray-50 rounded-full"
+            >
+              <X size={16} />
+            </button>
+            
+            <h3 className="text-xl font-black uppercase tracking-tighter text-black mb-2">Transaction ID</h3>
+            <p className="text-[11px] font-medium text-gray-500 mb-6">You can provide this ID to support if you need help with your payment.</p>
+            
+            <div className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-6 break-all">
+              <span className="font-mono text-sm font-bold text-gray-800">{selectedTransId}</span>
+            </div>
+
+            <button 
+              onClick={handleCopyTransId}
+              className={`w-full py-4 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${
+                isCopied ? 'bg-green-500 hover:bg-green-600' : 'bg-black hover:bg-blue-600'
+              }`}
+            >
+              {isCopied ? <><Check size={16} /> Copied!</> : <><Copy size={16} /> Copy ID</>}
+            </button>
           </div>
         </div>
       )}
