@@ -363,10 +363,13 @@ function ProductPageContent() {
     
     const combinedLocations = [location1, location2, location3].filter(Boolean).join(" + ");
 
+    // 🔑 AQUÍ MANDAMOS EL STYLE Y EL UNIQUE_KEY CORRECTAMENTE AL CARRITO
     addToCart({
       id: `${product.id}-${selectedColor}-${selectedSize}-${decorationMethod}-${location1}`,
       productId: product.id,
       slug: product.slug || slug as string,
+      style: product.style, // 🔑 Estilo exacto para la API de SanMar (ej. RS1003)
+      unique_key: exactVariant?.unique_key || exactVariant?.sku, // 🔑 ID exacto de la variante
       title: product.title || product.product_name,
       price: unitPrice,
       quantity: numericQuantity,

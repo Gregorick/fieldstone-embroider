@@ -5,17 +5,60 @@ import Link from "next/link";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { useCart } from "../context/CartContext";
-import { Trash2, Plus, Minus, ChevronRight, ShoppingBag, ArrowRight } from "lucide-react";
+import { Trash2, Plus, Minus, ChevronRight, ShoppingBag, ArrowRight, AlertCircle, Lock } from "lucide-react";
+import { getLiveInventory } from "@/app/actions/sanmarApi";
 
 export default function CartPage() {
   const { cartItems, updateQuantity, removeFromCart, cartTotal } = useCart();
   const [customLogo, setCustomLogo] = useState<string | null>(null);
+
+  // Estados para el control de inventario en vivo en la página del carrito
+  const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
+  const [checkingStock, setCheckingStock] = useState(false);
 
   // Cargar el logo global subido por el cliente
   useEffect(() => {
     const savedLogo = localStorage.getItem("user_custom_logo");
     if (savedLogo) setCustomLogo(savedLogo);
   }, []);
+
+  // Consultar inventario en vivo de los productos en el carrito al cargar la página
+  useEffect(() => {
+    async function fetchCartInventory() {
+      if (!cartItems.length) return;
+      setCheckingStock(true);
+      const stocksMap: Record<string, number> = {};
+
+      // Extraer estilos únicos presentes en el carrito
+      const uniqueStyles = Array.from(new Set(cartItems.map((item: any) => item.style || item.slug)));
+
+      for (const style of uniqueStyles) {
+        try {
+          const inventory = await getLiveInventory(style);
+          if (inventory && Array.isArray(inventory)) {
+            inventory.forEach((invItem: any) => {
+              // Mapeamos el stock usando el SKU / PART_ID exacto de la API
+              stocksMap[invItem.sku] = invItem.qty;
+            });
+          }
+        } catch (err) {
+          console.error(`Error fetching inventory for style ${style}:`, err);
+        }
+      }
+
+      setItemStocks(stocksMap);
+      setCheckingStock(false);
+    }
+
+    fetchCartInventory();
+  }, [cartItems]);
+
+  // Validar si algún producto en el carrito excede el stock actual en vivo
+  const hasStockIssues = cartItems.some((item: any) => {
+    const stockKey = String(item.unique_key || item.sku);
+    const stock = itemStocks[stockKey];
+    return stock !== undefined && item.quantity > stock;
+  });
 
   return (
     <main className="bg-white min-h-screen flex flex-col">
@@ -55,91 +98,116 @@ export default function CartPage() {
               </div>
 
               <div className="space-y-8">
-                {cartItems.map((item) => (
-                  <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center border-b border-gray-100 pb-8 group/row">
-                    
-                    <div className="col-span-1 md:col-span-6 flex gap-6 items-center">
-                      {/* ✅ IMAGEN DEL PRODUCTO LINKEADA AL SLUG */}
-                      <Link href={`/products/${item.slug}`} className="w-28 h-36 bg-[#F3F3F3] rounded-3xl p-4 flex-shrink-0 relative overflow-hidden group-hover/row:border-gray-200 border border-gray-100 shadow-inner transition-colors">
-                        <img 
-                          src={item.image} 
-                          alt={item.title} 
-                          className="absolute inset-0 w-full h-full object-contain mix-blend-multiply group-hover/row:scale-110 transition-transform duration-700 p-2" 
-                        />
-                        {/* Miniatura del logo superpuesta */}
-                        {customLogo && (
-                          <div 
-                            className="absolute bottom-2 right-2 w-10 h-10 bg-white border border-gray-200 rounded-xl shadow-md p-1 flex items-center justify-center overflow-hidden z-10"
-                            title="Your Custom Logo"
-                          >
-                            <img src={customLogo} alt="Logo" className="w-full h-full object-contain" />
-                          </div>
-                        )}
-                      </Link>
+                {cartItems.map((item) => {
+                  const stockKey = String(item.unique_key || item.sku);
+                  const itemStock = itemStocks[stockKey];
+                  const isExceeding = itemStock !== undefined && item.quantity > itemStock;
+                  const isMaxReached = itemStock !== undefined && item.quantity >= itemStock;
 
-                      {/* DETALLES TÉCNICOS DEL PRODUCTO */}
-                      <div className="flex-1">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-1">SanMar Catalog</span>
-                        {/* ✅ TÍTULO LINKEADO AL SLUG */}
-                        <Link href={`/products/${item.slug}`} className="text-[14px] font-bold text-black uppercase tracking-tight hover:text-blue-600 transition-colors block mb-2 line-clamp-2 pr-4">
-                          {item.title}
+                  return (
+                    <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center border-b border-gray-100 pb-8 group/row">
+                      
+                      <div className="col-span-1 md:col-span-6 flex gap-6 items-center">
+                        {/* ✅ IMAGEN DEL PRODUCTO LINKEADA AL SLUG */}
+                        <Link href={`/products/${item.slug}`} className="w-28 h-36 bg-[#F3F3F3] rounded-3xl p-4 flex-shrink-0 relative overflow-hidden group-hover/row:border-gray-200 border border-gray-100 shadow-inner transition-colors">
+                          <img 
+                            src={item.image} 
+                            alt={item.title} 
+                            className="absolute inset-0 w-full h-full object-contain mix-blend-multiply group-hover/row:scale-110 transition-transform duration-700 p-2" 
+                          />
+                          {/* Miniatura del logo superpuesta */}
+                          {customLogo && (
+                            <div 
+                              className="absolute bottom-2 right-2 w-10 h-10 bg-white border border-gray-200 rounded-xl shadow-md p-1 flex items-center justify-center overflow-hidden z-10"
+                              title="Your Custom Logo"
+                            >
+                              <img src={customLogo} alt="Logo" className="w-full h-full object-contain" />
+                            </div>
+                          )}
                         </Link>
-                        
-                        {/* Etiqueta Técnica de Opciones */}
-                        <div className="mt-3 space-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100 inline-block min-w-full lg:min-w-[280px]">
-                          <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span> 
-                            COLOR: <span className="text-black">{item.color}</span> <span className="text-gray-300">|</span> SIZE: <span className="text-black">{item.size}</span>
-                          </p>
+
+                        {/* DETALLES TÉCNICOS DEL PRODUCTO */}
+                        <div className="flex-1">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-1">SanMar Catalog</span>
+                          {/* ✅ TÍTULO LINKEADO AL SLUG */}
+                          <Link href={`/products/${item.slug}`} className="text-[14px] font-bold text-black uppercase tracking-tight hover:text-blue-600 transition-colors block mb-2 line-clamp-2 pr-4">
+                            {item.title}
+                          </Link>
                           
-                          {item.decorationMethod && (
+                          {/* Etiqueta Técnica de Opciones */}
+                          <div className="mt-3 space-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100 inline-block min-w-full lg:min-w-[280px]">
                             <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> 
-                              DEC: <span className="text-blue-600">{item.decorationMethod === 'EMB' ? 'EMBROIDERY' : item.decorationMethod === 'SP' ? 'SCREEN PRINT' : item.decorationMethod}</span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span> 
+                              COLOR: <span className="text-black">{item.color}</span> <span className="text-gray-300">|</span> SIZE: <span className="text-black">{item.size}</span>
                             </p>
-                          )}
-                          
-                          {/* Corrección aplicada aquí con (item as any) */}
-                          {(item as any).location && (
-                            <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-start gap-2 line-clamp-2" title={(item as any).location}>
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1 flex-shrink-0"></span> 
-                              LOC: <span className="text-black leading-tight">{(item as any).location}</span>
-                            </p>
-                          )}
+                            
+                            {item.decorationMethod && (
+                              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> 
+                                DEC: <span className="text-blue-600">{item.decorationMethod === 'EMB' ? 'EMBROIDERY' : item.decorationMethod === 'SP' ? 'SCREEN PRINT' : item.decorationMethod}</span>
+                              </p>
+                            )}
+                            
+                            {(item as any).location && (
+                              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-start gap-2 line-clamp-2" title={(item as any).location}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1 flex-shrink-0"></span> 
+                                LOC: <span className="text-black leading-tight">{(item as any).location}</span>
+                              </p>
+                            )}
+
+                            {/* 🚀 ADVERTENCIA DE STOCK EN VIVO */}
+                            {isExceeding && (
+                              <p className="text-[9px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1 mt-1 pt-1 border-t border-red-100">
+                                <AlertCircle size={10} /> Only {itemStock} available in stock. Please reduce quantity.
+                              </p>
+                            )}
+                          </div>
+
+                          <p className="text-[12px] font-bold text-gray-400 mt-3 md:hidden">${item.price.toFixed(2)} /ea</p>
                         </div>
-
-                        <p className="text-[12px] font-bold text-gray-400 mt-3 md:hidden">${item.price.toFixed(2)} /ea</p>
                       </div>
-                    </div>
 
-                    {/* CONTROLES DE CANTIDAD */}
-                    <div className="col-span-1 md:col-span-3 flex justify-start md:justify-center">
-                      <div className="flex items-center border border-gray-200 rounded-2xl h-12 bg-white transition-colors hover:border-gray-300 shadow-sm">
-                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-4 text-gray-500 hover:text-black transition-colors"><Minus size={14} strokeWidth={3} /></button>
-                        <span className="w-8 text-center text-black text-[13px] font-black">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="px-4 text-gray-500 hover:text-black transition-colors"><Plus size={14} strokeWidth={3} /></button>
+                      {/* CONTROLES DE CANTIDAD BLINDADOS */}
+                      <div className="col-span-1 md:col-span-3 flex justify-start md:justify-center">
+                        <div className="flex items-center border border-gray-200 rounded-2xl h-12 bg-white transition-colors hover:border-gray-300 shadow-sm">
+                          <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-4 text-gray-500 hover:text-black transition-colors"><Minus size={14} strokeWidth={3} /></button>
+                          <span className="w-8 text-center text-black text-[13px] font-black">{item.quantity}</span>
+                          
+                          {/* 🛡️ BOTÓN PLUS BLINDADO: Bloquea si item.quantity >= itemStock */}
+                          <button 
+                            onClick={() => {
+                              if (itemStock !== undefined && item.quantity >= itemStock) return;
+                              updateQuantity(item.id, item.quantity + 1);
+                            }} 
+                            disabled={isMaxReached}
+                            className={`px-4 transition-colors ${isMaxReached ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-black'}`}
+                            title={isMaxReached ? `Maximum available stock reached (${itemStock} units)` : "Increase quantity"}
+                          >
+                            <Plus size={14} strokeWidth={3} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* PRECIO TOTAL POR FILA */}
-                    <div className="col-span-1 md:col-span-2 text-left md:text-right flex flex-col justify-center">
-                      <span className="text-[11px] font-bold text-gray-400 mb-1 hidden md:block">${item.price.toFixed(2)}/ea</span>
-                      <span className="text-xl font-black text-black tracking-tighter">${(item.price * item.quantity).toFixed(2)}</span>
-                    </div>
+                      {/* PRECIO TOTAL POR FILA */}
+                      <div className="col-span-1 md:col-span-2 text-left md:text-right flex flex-col justify-center">
+                        <span className="text-[11px] font-bold text-gray-400 mb-1 hidden md:block">${item.price.toFixed(2)}/ea</span>
+                        <span className="text-xl font-black text-black tracking-tighter">${(item.price * item.quantity).toFixed(2)}</span>
+                      </div>
 
-                    {/* BOTÓN DE ELIMINAR */}
-                    <div className="col-span-1 text-right">
-                      <button 
-                        onClick={() => removeFromCart(item.id)} 
-                        className="text-gray-300 hover:text-red-500 transition-all duration-300 p-3 bg-white border border-gray-100 hover:border-red-100 hover:bg-red-50 rounded-full shadow-sm"
-                        title="Remove item"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
+                      {/* BOTÓN DE ELIMINAR */}
+                      <div className="col-span-1 text-right">
+                        <button 
+                          onClick={() => removeFromCart(item.id)} 
+                          className="text-gray-300 hover:text-red-500 transition-all duration-300 p-3 bg-white border border-gray-100 hover:border-red-100 hover:bg-red-50 rounded-full shadow-sm"
+                          title="Remove item"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
 
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -163,16 +231,26 @@ export default function CartPage() {
                 <span className="text-4xl font-black text-black tracking-tighter leading-none">${cartTotal.toFixed(2)}</span>
               </div>
 
+              {/* 🛡️ BOTÓN DE CHECKOUT BLINDADO SI HAY PROBLEMAS DE STOCK */}
               <Link 
-                href="/checkout"
-                className="w-full h-16 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-2xl flex items-center justify-center gap-3"
+                href={hasStockIssues ? "#" : "/checkout"}
+                onClick={(e) => {
+                  if (hasStockIssues) {
+                    e.preventDefault();
+                    alert("Please adjust the quantities of items that exceed available stock before proceeding to checkout.");
+                  }
+                }}
+                className={`w-full h-16 text-[11px] font-black uppercase tracking-[0.2em] rounded-xl shadow-2xl flex items-center justify-center gap-3 transition-colors ${
+                  hasStockIssues ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-black text-white hover:bg-blue-600"
+                }`}
               >
-                Checkout Securely <ArrowRight size={16} />
+                <Lock size={14} className={hasStockIssues ? "text-gray-400" : "text-white/70"} /> 
+                {hasStockIssues ? "Resolve Stock Issues to Checkout" : "Checkout Securely"}
               </Link>
 
               <div className="mt-6 flex flex-col items-center justify-center gap-4">
                  <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 text-center">Accepted Payment Methods</p>
-                 <div className="flex items-center gap-4 opacity-100  hover:opacity-1 transition-all duration-500">
+                 <div className="flex items-center gap-4 opacity-100 transition-all duration-500">
                    <img src="mastercard.png" alt="Mastercard" className="h-6 object-contain" />
                    <img src="stripelogo.png" alt="Stripe" className="h-6 object-contain" />
                    <img src="visa.svg" alt="Visa" className="h-4 object-contain" />
