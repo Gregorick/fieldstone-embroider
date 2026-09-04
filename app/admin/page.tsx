@@ -59,7 +59,6 @@ export default function AdminDashboard() {
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
 
-  // 🔥 ESTADO PARA GUARDAR LOS SLUGS REALES DINÁMICAMENTE
   const [realSlugs, setRealSlugs] = useState<Record<string, string>>({});
 
   const [footerData, setFooterData] = useState({
@@ -128,24 +127,69 @@ export default function AdminDashboard() {
     fetchUsers();
     fetchFormsData(); 
 
-    const { data: catData } = await supabase.rpc("get_unique_categories");
-    const { data: brandData } = await supabase.from("products_unique_styles").select("brand").not("brand", "is", null);
+    // 🚀 CARGAR TODAS LAS CATEGORÍAS SIN LÍMITE
+    let allCatsDb: string[] = [];
+    let catFrom = 0;
+    let fetchMoreCats = true;
+    while (fetchMoreCats) {
+      const { data: catData } = await supabase
+        .from("products_unique_styles")
+        .select("category")
+        .not("category", "is", null)
+        .range(catFrom, catFrom + 999);
+
+      if (!catData || catData.length === 0) {
+        fetchMoreCats = false;
+      } else {
+        allCatsDb.push(...catData.map((item: any) => item.category?.trim()).filter(Boolean));
+        if (catData.length < 1000) fetchMoreCats = false;
+        else catFrom += 1000;
+      }
+    }
+    const fetchedCats = Array.from(new Set(allCatsDb)).sort();
+
+    // 🚀 CARGAR TODAS LAS MARCAS DINÁMICAMENTE EN BUCLE SIN LÍMITE
+    let allBrandsDb: string[] = [];
+    let brandFrom = 0;
+    let fetchMoreBrands = true;
+
+    while (fetchMoreBrands) {
+      const { data: brandData } = await supabase
+        .from("products_unique_styles")
+        .select("brand")
+        .not("brand", "is", null)
+        .range(brandFrom, brandFrom + 999);
+
+      if (!brandData || brandData.length === 0) {
+        fetchMoreBrands = false;
+      } else {
+        allBrandsDb.push(...brandData.map((item: any) => item.brand?.trim()).filter(Boolean));
+        if (brandData.length < 1000) fetchMoreBrands = false;
+        else brandFrom += 1000;
+      }
+    }
+    const fetchedBrands = Array.from(new Set(allBrandsDb)).sort();
+
     const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
 
-    let fetchedCats = catData ? catData.map((item: any) => item.category_name) : [];
-    let fetchedBrands = brandData ? Array.from(new Set(brandData.map((item: any) => item.brand))).sort() as string[] : [];
-
     if (settings) {
-      const savedCats = settings.visible_categories || fetchedCats;
-      const savedBrands = settings.visible_brands || fetchedBrands;
+      const savedCats = settings.visible_categories || [];
+      const savedBrands = settings.visible_brands || [];
 
+      // Combinar asegurando que las marcas guardadas mantengan su orden, 
+      // y anexar automáticamente cualquier marca nueva al final.
       const mergedCats = Array.from(new Set([...savedCats, ...fetchedCats]));
       const mergedBrands = Array.from(new Set([...savedBrands, ...fetchedBrands]));
 
       setAllCategories(mergedCats);
       setAllBrands(mergedBrands);
-      setVisibleCategories(settings.visible_categories || mergedCats);
-      setVisibleBrands(settings.visible_brands || mergedBrands);
+
+      // Hacemos que cualquier marca/categoría nueva sea visible por defecto para que no se pierda
+      const newCats = fetchedCats.filter((c: string) => !savedCats.includes(c));
+      const newBrands = fetchedBrands.filter((b: string) => !savedBrands.includes(b));
+      
+      setVisibleCategories([...savedCats, ...newCats]);
+      setVisibleBrands([...savedBrands, ...newBrands]);
 
       if (settings.small_order_fee_threshold !== undefined) setFeeThreshold(settings.small_order_fee_threshold);
       if (settings.small_order_fee_amount !== undefined) setFeeAmount(settings.small_order_fee_amount);
@@ -215,13 +259,14 @@ export default function AdminDashboard() {
   const saveSettings = async () => {
     setLoading(true);
     
+    // Guardamos las marcas y categorías respetando el orden exacto de allCategories y allBrands
     const finalCategories = allCategories.filter(cat => visibleCategories.includes(cat));
     const finalBrands = allBrands.filter(brand => visibleBrands.includes(brand));
 
     const { error } = await supabase.from("store_settings").upsert({ 
       id: "default", 
       visible_categories: finalCategories, 
-      visible_brands: finalBrands,         
+      visible_brands: finalBrands,        
       small_order_fee_threshold: feeThreshold, 
       small_order_fee_amount: feeAmount, 
       decoration_tiers: pricingTiers,
@@ -289,12 +334,10 @@ export default function AdminDashboard() {
     } catch (err: any) { alert("Error deleting subscriber: " + err.message); }
   };
 
-  // 🔥 ACTUALIZADO: Buscamos el Slug real cuando se abre la orden
   const handleOpenOrder = async (order: any) => {
     setSelectedOrder(order);
     setTrackingUrlInput("");
 
-    // Buscar slugs en la tabla 'products' usando los IDs de esta orden
     if (order.order_items && order.order_items.length > 0) {
       const productIds = order.order_items.map((item: any) => item.product_id).filter(Boolean);
       if (productIds.length > 0) {

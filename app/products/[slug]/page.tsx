@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useRef } from "react";
 import { useParams, useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { getLiveInventory } from "@/app/actions/sanmarApi";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import { useCart } from "../../context/CartContext";
@@ -34,7 +35,6 @@ const DEFAULT_DECORATION_TIERS = [
   { min: 288, max: 499, emb: 6.00, sp: 3.00, dtf: 5.45 },
 ];
 
-// 🔥 NUEVO COMPONENTE: Imagen con Zoom al hacer clic
 function ZoomableImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
   const [isZoomed, setIsZoomed] = useState(false);
   const [position, setPosition] = useState({ x: 50, y: 50 });
@@ -49,7 +49,6 @@ function ZoomableImage({ src, alt, className }: { src: string; alt: string; clas
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isZoomed) {
-      // Calcula exactamente dónde hizo clic el usuario para hacer el zoom hacia ese punto
       const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
       const x = ((e.clientX - left) / width) * 100;
       const y = ((e.clientY - top) / height) * 100;
@@ -98,7 +97,7 @@ function ProductPageContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLegalWarningOpen, setIsLegalWarningOpen] = useState(false);
 
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantity, setQuantity] = useState<number | string>(1);
   const [decorationMethod, setDecorationMethod] = useState<"emb" | "sp" | "">("");
   
   const [location1, setLocation1] = useState<string>("");
@@ -116,6 +115,7 @@ function ProductPageContent() {
   const [quoteSuccess, setQuoteSuccess] = useState(false);
 
   const [variants, setVariants] = useState<any[]>([]);
+  const [liveInventory, setLiveInventory] = useState<any[]>([]);
   const [availableColorObjects, setAvailableColorObjects] = useState<{name: string, image: string}[]>([]);
   const [availableSizes, setAvailableSizes] = useState<string[]>([]);
   const [selectedColor, setSelectedColor] = useState("");
@@ -179,6 +179,18 @@ function ProductPageContent() {
       if (productData) {
         setProduct(productData);
         setMainImage(productData.image_url);
+
+        const rawStyle = productData.style || productData.sku || "";
+        const cleanStyle = rawStyle.trim().toUpperCase();
+        
+        let inventoryData = await getLiveInventory(cleanStyle);
+        
+        if ((!inventoryData || inventoryData.length === 0) && cleanStyle.includes("-")) {
+          const baseStyle = cleanStyle.split("-")[0];
+          inventoryData = await getLiveInventory(baseStyle);
+        }
+
+        setLiveInventory(inventoryData || []);
 
         const { data: variantsData } = await supabase.from("products").select("*").eq("style", productData.style);
 
@@ -284,6 +296,19 @@ function ProductPageContent() {
     }
   };
 
+  // 🚀 BÚSQUEDA BLINDADA POR ID (UNIQUE_KEY === PART_ID)
+  const exactVariant = variants.find(
+    v => v.color_name === selectedColor && v.size === selectedSize
+  );
+
+  const currentVariantStock = liveInventory.find((item: any) => {
+    if (!exactVariant) return false;
+    return item.sku === String(exactVariant.unique_key || exactVariant.sku);
+  });
+
+  // 🛡️ Si no hay datos comprobados en la API, asignamos 0 (Out of Stock) en lugar de un valor ciego
+  const stockQty = currentVariantStock ? currentVariantStock.qty : (liveInventory.length > 0 ? 0 : null);
+
   let availableLocations: string[] = [];
   const catUpper = product?.category?.toUpperCase() || "";
 
@@ -304,11 +329,15 @@ function ProductPageContent() {
     availableLocations = ["Standard Location"];
   }
 
-  const currentTier = decorationTiers.find(t => quantity >= Number(t.min) && quantity <= Number(t.max)) || decorationTiers[decorationTiers.length - 1];
+  const numericQuantity = Number(quantity) || 1;
+  const currentTier = decorationTiers.find(t => numericQuantity >= Number(t.min) && numericQuantity <= Number(t.max)) || decorationTiers[decorationTiers.length - 1];
   const addedPrice = decorationMethod ? currentTier[decorationMethod as "emb" | "sp"] : 0;
   const unitPrice = basePrice + addedPrice;
-  const totalSubtotal = unitPrice * quantity;
-  const isQuote = quantity >= 500;
+  const totalSubtotal = unitPrice * numericQuantity;
+  const isQuote = numericQuantity >= 500;
+
+  // 🚀 Comprobación estricta de exceso de stock
+  const exceedsStock = !isQuote && stockQty !== null && numericQuantity > stockQty;
 
   const handleActionClick = () => {
     if (!selectedColor) return setValidationError("Please select a Color for your product.");
@@ -316,6 +345,16 @@ function ProductPageContent() {
     if (!decorationMethod) return setValidationError("Please select a Decoration Method (Embroidery or Screen Print).");
     if (!uploadedLogo) return setValidationError("Please upload your Custom Logo to proceed.");
     if (!location1) return setValidationError("Please select a Primary Logo Location.");
+
+    if (stockQty === 0 || stockQty === null) {
+      setValidationError("Selected variation is out of stock.");
+      return;
+    }
+
+    if (exceedsStock) {
+      setValidationError(`You requested ${numericQuantity} units, but only ${stockQty} are available in stock.`);
+      return;
+    }
 
     if (isQuote) {
       setIsQuoteModalOpen(true);
@@ -330,7 +369,7 @@ function ProductPageContent() {
       slug: product.slug || slug as string,
       title: product.title || product.product_name,
       price: unitPrice,
-      quantity: quantity,
+      quantity: numericQuantity,
       image: mainImage,
       size: selectedSize,
       color: selectedColor,
@@ -367,7 +406,7 @@ function ProductPageContent() {
         selectedSize,
         decorationMethod: decorationMethod.toUpperCase(),
         locations: combinedLocations,
-        quantity,
+        quantity: numericQuantity,
         logoUrl: safeLogoUrl,
         extraComments
       };
@@ -478,12 +517,12 @@ function ProductPageContent() {
               </div>
             </div>
 
-            {/* TALLAS */}
+            {/* TALLAS Y STOCK EN VIVO */}
             <div className="mb-8 pb-8 border-b border-gray-100">
               <div className="flex justify-between items-center mb-3">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Size: <span className="text-black">{selectedSize}</span></label>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 mb-4">
                 {availableSizes.map(size => (
                   <button
                     key={size} 
@@ -496,6 +535,23 @@ function ProductPageContent() {
                     {size}
                   </button>
                 ))}
+              </div>
+
+              {/* 🚀 INDICADOR ESTRICTO: OUT OF STOCK SI NO HAY UNIDADES */}
+              <div className="mt-2">
+                {stockQty === 0 || stockQty === null ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 text-[11px] font-black rounded-xl uppercase tracking-wider border border-red-200">
+                    <AlertCircle size={14} /> Out of Stock ({selectedColor} / {selectedSize})
+                  </span>
+                ) : stockQty < 10 ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 text-[11px] font-black rounded-xl uppercase tracking-wider animate-pulse border border-red-200 shadow-sm">
+                    <AlertCircle size={14} /> Only {stockQty} left in stock!
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 text-[11px] font-bold rounded-xl uppercase tracking-wider border border-green-200">
+                    <Check size={14} /> In Stock ({stockQty} available)
+                  </span>
+                )}
               </div>
             </div>
 
@@ -522,7 +578,6 @@ function ProductPageContent() {
             {decorationMethod && (
               <div className="mb-10 w-full border-2 border-dashed border-gray-300 rounded-3xl p-8 flex flex-col items-center justify-center bg-gray-50 transition-all relative animate-in fade-in">
                 
-                {/* 🔥 BOTÓN PLACEMENT GUIDE MEJORADO 🔥 */}
                 <div className="relative group mb-8">
                   <button 
                     onClick={() => setIsPlacementGuideOpen(true)} 
@@ -532,7 +587,6 @@ function ProductPageContent() {
                     <ArrowRight size={16} className="animate-arrow text-white" strokeWidth={3} />
                   </button>
                   
-                  {/* Tooltip Hover */}
                   <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-2 bg-black text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 flex flex-col items-center shadow-xl">
                     A quick guide to help you choose the best logo placement
                     <div className="absolute -bottom-1 w-2 h-2 bg-black rotate-45"></div>
@@ -662,7 +716,7 @@ function ProductPageContent() {
               </div>
             )}
 
-            {totalSubtotal < feeThreshold && quantity < 500 && (
+            {totalSubtotal < feeThreshold && numericQuantity < 500 && (
               <div className="mb-10 p-5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
                 <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-[11px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
@@ -672,18 +726,51 @@ function ProductPageContent() {
               </div>
             )}
 
+            {/* CONTROLES DE CANTIDAD */}
             <div className="flex items-end gap-6 mb-10 pb-10 border-b border-gray-100">
               <div className="flex flex-col">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">Quantity</label>
                 <div className="flex items-center gap-1 p-1.5 border-2 border-[#e8f0fe] rounded-2xl bg-white w-max">
-                  <button onClick={() => setQuantity(q => Math.max(1, q - 1))} className="w-10 h-10 flex items-center justify-center rounded-full bg-[#eaf2fd] text-[#3b5bdb] hover:bg-[#dce7fc] transition-colors flex-shrink-0"><Minus size={22} strokeWidth={4} /></button>
-                  <input type="number" min="1" max="5000" value={quantity || ""} onChange={(e) => setQuantity(Number(e.target.value))} onBlur={() => setQuantity(q => Math.max(1, q))} className="w-16 h-10 border border-[#d2e3fc] rounded-xl text-center text-lg font-black text-[#1a1a1a] outline-none focus:border-[#3b5bdb] transition-colors appearance-none" style={{ WebkitAppearance: 'none', MozAppearance: 'textfield' }} />
-                  <button onClick={() => setQuantity(q => q + 1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-[#eaf2fd] text-[#3b5bdb] border-[2.5px] border-[#3b5bdb] hover:bg-[#dce7fc] transition-colors flex-shrink-0"><Plus size={22} strokeWidth={4} /></button>
+                  <button onClick={() => setQuantity(q => Math.max(1, Number(q || 1) - 1))} className="w-10 h-10 flex items-center justify-center rounded-full bg-[#eaf2fd] text-[#3b5bdb] hover:bg-[#dce7fc] transition-colors flex-shrink-0"><Minus size={22} strokeWidth={4} /></button>
+                  
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max="5000" 
+                    value={quantity} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setQuantity(val === "" ? "" : Number(val));
+                    }} 
+                    onBlur={() => {
+                      if (quantity === "" || Number(quantity) < 1) setQuantity(1);
+                    }} 
+                    className="w-16 h-10 border border-[#d2e3fc] rounded-xl text-center text-lg font-black text-[#1a1a1a] outline-none focus:border-[#3b5bdb] transition-colors appearance-none" 
+                    style={{ WebkitAppearance: 'none', MozAppearance: 'textfield' }} 
+                  />
+
+                  <button onClick={() => setQuantity(q => Number(q || 0) + 1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-[#eaf2fd] text-[#3b5bdb] border-[2.5px] border-[#3b5bdb] hover:bg-[#dce7fc] transition-colors flex-shrink-0"><Plus size={22} strokeWidth={4} /></button>
                 </div>
               </div>
               <div className="flex-[2]">
-                <button onClick={handleActionClick} className={`w-full h-[54px] text-[11px] font-black uppercase tracking-[0.2em] rounded-xl transition-colors shadow-xl flex items-center justify-center gap-3 ${isQuote ? "bg-white border-2 border-black text-black hover:bg-black hover:text-white" : "bg-black text-white hover:bg-[#8012d8]"}`}>
-                  {isQuote ? "Request a Quote" : `Add to Cart • $${totalSubtotal.toFixed(2)}`}
+                <button 
+                  onClick={handleActionClick} 
+                  disabled={stockQty === 0 || stockQty === null || exceedsStock}
+                  className={`w-full h-[54px] text-[11px] font-black uppercase tracking-[0.2em] rounded-xl transition-colors shadow-xl flex items-center justify-center gap-3 ${
+                    stockQty === 0 || stockQty === null || exceedsStock 
+                      ? "bg-gray-200 text-gray-400 cursor-not-allowed" 
+                      : isQuote 
+                      ? "bg-white border-2 border-black text-black hover:bg-black hover:text-white" 
+                      : "bg-black text-white hover:bg-[#8012d8]"
+                  }`}
+                >
+                  {stockQty === 0 || stockQty === null 
+                    ? "Out of Stock" 
+                    : exceedsStock 
+                    ? "Exceeds Available Stock" 
+                    : isQuote 
+                    ? "Request a Quote" 
+                    : `Add to Cart • $${totalSubtotal.toFixed(2)}`}
                 </button>
               </div>
             </div>
@@ -704,7 +791,7 @@ function ProductPageContent() {
       </div>
       <Footer />
 
-      {/* 🟢 MODAL DE COTIZACIÓN (REQUEST A QUOTE) */}
+      {/* MODAL DE COTIZACIÓN */}
       {isQuoteModalOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => !isSubmittingQuote && setIsQuoteModalOpen(false)}>
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -727,7 +814,6 @@ function ProductPageContent() {
                 </div>
               ) : (
                 <form onSubmit={handleSendQuoteRequest} className="space-y-6">
-                  {/* DETALLES DEL PRODUCTO */}
                   <div className="p-5 bg-gray-50 border border-gray-200 rounded-2xl flex items-center gap-4">
                     {uploadedLogo && (
                       <div className="w-16 h-16 bg-white border border-gray-200 rounded-xl p-1 flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -741,7 +827,7 @@ function ProductPageContent() {
                         <p>Color: <span className="text-black">{selectedColor}</span></p>
                         <p>Size: <span className="text-black">{selectedSize}</span></p>
                         <p>Method: <span className="text-black">{decorationMethod.toUpperCase()}</span></p>
-                        <p>Qty: <span className="text-black">{quantity} units</span></p>
+                        <p>Qty: <span className="text-black">{numericQuantity} units</span></p>
                       </div>
                       <p className="text-[10px] font-bold text-gray-600 mt-1">Locations: <span className="text-black">{[location1, location2, location3].filter(Boolean).join(" + ")}</span></p>
                     </div>
@@ -842,24 +928,14 @@ function ProductPageContent() {
         </div>
       )}
       
-      {/* ESTILOS GLOBALES DE LA PÁGINA */}
       <style jsx global>{`
-        @keyframes moveArrow {
-          0%, 100% { transform: translateX(0); }
-          50% { transform: translateX(5px); }
-        }
-        .animate-arrow {
-          animation: moveArrow 1.5s infinite ease-in-out;
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+        App { ... }
       `}</style>
     </main>
   );
 }
 
-export default function ProductPage() {
+export default function ProductPageContentExport() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">

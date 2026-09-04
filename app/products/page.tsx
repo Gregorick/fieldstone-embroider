@@ -94,38 +94,78 @@ function ProductsContent() {
     setCurrentPage(1);
   }, [searchParams]);
 
-  // 🔥 FETCH 1: CARGA LAS OPCIONES DEL MENÚ LATERAL Y ORDEN DE DB
+  // 🔥 FETCH 1: CARGA CATEGORÍAS Y MARCAS 100% DINÁMICAS Y RESPETANDO STORE_SETTINGS
   useEffect(() => {
     async function fetchFilters() {
+      // 1. Obtener marcas y categorías visibles guardadas en store_settings
       const { data: settings } = await supabase.from("store_settings").select("visible_categories, visible_brands").eq("id", "default").single();
       
-      let orderedCats: string[] = [];
-      let orderedBrands: string[] = [];
+      let orderedBrands: string[] = settings?.visible_brands || [];
+      let orderedCats: string[] = settings?.visible_categories || [];
 
-      if (settings) {
-        orderedCats = settings.visible_categories || [];
-        orderedBrands = settings.visible_brands || [];
-      }
-
-      setDynamicCategories(orderedCats);
-
-      if (!selectedCategory) {
-        setDynamicBrands(orderedBrands);
-      } else {
-        const { data: brandData } = await supabase
+      // 2. Cargar todas las categorías reales de la base de datos sin límite
+      let allCatsDb: string[] = [];
+      let catFrom = 0;
+      let fetchMoreCats = true;
+      while (fetchMoreCats) {
+        const { data: catData, error: catError } = await supabase
           .from("products_unique_styles")
-          .select("brand")
-          .eq("category", selectedCategory)
-          .not("brand", "is", null)
-          .limit(5000);
-          
-        if (brandData) {
-           const catsBrands = Array.from(new Set(brandData.map(b => b.brand)));
-           const sortedCatBrands = orderedBrands.filter(b => catsBrands.includes(b));
-           setDynamicBrands(sortedCatBrands);
+          .select("category")
+          .not("category", "is", null)
+          .range(catFrom, catFrom + 999);
+
+        if (catError || !catData || catData.length === 0) {
+          fetchMoreCats = false;
+        } else {
+          allCatsDb.push(...catData.map(c => c.category?.trim()).filter(Boolean));
+          if (catData.length < 1000) fetchMoreCats = false;
+          else catFrom += 1000;
         }
       }
+      const uniqueDbCats = Array.from(new Set(allCatsDb));
+      const finalOrderedCats = [
+        ...orderedCats.filter(c => uniqueDbCats.includes(c)),
+        ...uniqueDbCats.filter(c => !orderedCats.includes(c)).sort((a, b) => a.localeCompare(b))
+      ];
+      setDynamicCategories(finalOrderedCats);
 
+      // 3. Cargar todas las marcas reales de la base de datos sin límite
+      let allBrandsDb: string[] = [];
+      let brandFrom = 0;
+      let fetchMoreBrands = true;
+
+      while (fetchMoreBrands) {
+        let brandQuery = supabase
+          .from("products_unique_styles")
+          .select("brand")
+          .not("brand", "is", null)
+          .range(brandFrom, brandFrom + 999);
+        
+        if (selectedCategory) {
+          brandQuery = brandQuery.eq("category", selectedCategory);
+        }
+
+        const { data: brandData, error: brandError } = await brandQuery;
+
+        if (brandError || !brandData || brandData.length === 0) {
+          fetchMoreBrands = false;
+        } else {
+          allBrandsDb.push(...brandData.map(b => b.brand?.trim()).filter(Boolean));
+          if (brandData.length < 1000) fetchMoreBrands = false;
+          else brandFrom += 1000;
+        }
+      }
+      
+      const uniqueDbBrands = Array.from(new Set(allBrandsDb));
+      // Respetar el orden del Admin, y agregar al final las marcas nuevas que no estuvieran en los settings
+      const finalOrderedBrands = [
+        ...orderedBrands.filter(b => uniqueDbBrands.includes(b)),
+        ...uniqueDbBrands.filter(b => !orderedBrands.includes(b)).sort((a, b) => a.localeCompare(b))
+      ];
+      
+      setDynamicBrands(finalOrderedBrands);
+
+      // 4. Tallas dinámicas
       const { data: sizesData } = await supabase.rpc('get_dynamic_sizes', {
         p_category: selectedCategory || null,
         p_brand: selectedBrand || null
@@ -136,6 +176,7 @@ function ProductsContent() {
         setDynamicSizes(DEFAULT_SIZES.map(s => ({ name: s, count: 0 })));
       }
 
+      // 5. Colores dinámicos
       const { data: colorsData } = await supabase.rpc('get_dynamic_colors', {
         p_category: selectedCategory || null,
         p_brand: selectedBrand || null
@@ -167,12 +208,10 @@ function ProductsContent() {
       }
     });
 
-    // Extraemos hasta 9 productos de cada grupo prioritario
     const topCaps = caps.slice(0, 9);
     const topBags = bags.slice(0, 9);
     const topPolos = polos.slice(0, 9);
 
-    // Agrupamos todo el inventario sobrante (gorras, bolsos y polos que no entraron en el top 9 + el resto de categorías)
     const remainingProducts = [
       ...caps.slice(9),
       ...bags.slice(9),
@@ -180,11 +219,8 @@ function ProductsContent() {
       ...others
     ];
 
-    // Mezcla ESTABLE del inventario sobrante.
-    // Usamos el ID o el style como factor pseudo-aleatorio para que se vea mezclado, pero sin romper la paginación.
     remainingProducts.sort((a, b) => ((a.style || a.id) > (b.style || b.id) ? 1 : -1));
 
-    // Retornamos el orden final
     return [...topCaps, ...topBags, ...topPolos, ...remainingProducts];
   };
 
@@ -197,7 +233,7 @@ function ProductsContent() {
       try {
         const isDeepFiltering = selectedSizes.length > 0 || selectedColors.length > 0;
         const from = (currentPage - 1) * ITEMS_PER_PAGE;
-        const to = from + ITEMS_PER_PAGE; // Punto de corte final para Slice
+        const to = from + ITEMS_PER_PAGE;
 
         let matchingStyles: string[] = [];
         let styleToImageMap = new Map<string, string>(); 
@@ -262,7 +298,6 @@ function ProductsContent() {
           matchingStyles = matchingStyles.slice(0, 800); 
         }
 
-        // 🟢 TRAEMOS TODOS LOS PRODUCTOS EN BLOQUES (BYPASS AL LÍMITE DE 1000 DE SUPABASE)
         let allData: any[] = [];
         let rangeStep = 1000;
         let fromRow = 0;
@@ -291,10 +326,6 @@ function ProductsContent() {
           } else {
             fetchMore = false;
           }
-
-          if (allData.length >= 5000) {
-            fetchMore = false;
-          }
         }
 
         if (allData.length > 0) {
@@ -305,10 +336,8 @@ function ProductsContent() {
             return item;
           });
           
-          // 🔥 1. APLICAMOS LA REGLA: 9 Caps -> 9 Bags -> 9 Polos -> Resto Mixto
           customizedData = organizeProducts(customizedData);
 
-          // 🔥 2. FIJAMOS EL TOTAL REAL Y DIVIDIMOS LA LISTA ORDENADA PARA LA PÁGINA ACTUAL
           setTotalProducts(customizedData.length);
           setProducts(customizedData.slice(from, to));
         }
@@ -524,7 +553,7 @@ function ProductsContent() {
                   >
                     Previous
                   </button>
-                  <div className="flex items-center gap-2 px-4 text-[12px] font-bold text-gray-400">
+                  <div className="flex items-center gap-4 px-4 text-[12px] font-bold text-gray-400">
                     <span className="text-black">{currentPage}</span> / <span>{totalPages}</span>
                   </div>
                   <button
