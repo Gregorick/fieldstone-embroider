@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       const totalToDisplay = Number(updatedOrder.total_amount).toFixed(2);
       const shortOrderId = orderId.split('-')[0].toUpperCase();
 
-      // 🔥 LÓGICA DE DIRECCIÓN HTML LIMPIA (Sin referencias a llamadas)
+      // 🔥 LÓGICA DE DIRECCIÓN HTML LIMPIA
       const shippingMethod = updatedOrder.shipping_method || 'shipping';
       
       let deliveryHtml = '';
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       if (dbItems.length > 0) {
         unifiedItemsHtml = dbItems.map((item: any) => {
           const logoUrl = item.custom_logo_url || '';
-          const pName = item.product_name || 'Producto';
+          const pName = item.product_name || 'Product';
           const pSize = item.size || '-';
           const pColor = item.color || '';
           const pMethod = item.decoration_method || '-';
@@ -177,36 +177,72 @@ export async function POST(req: Request) {
           `;
         }).join('');
       } else {
-        unifiedItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red; border-radius: 8px;">⚠️ Error: Detalles visuales en proceso de sincronización.</div>`;
+        unifiedItemsHtml = `<div style="padding:20px; text-align:center; color:red; border:1px solid red; border-radius: 8px;">⚠️ Error: Visual details sync in progress.</div>`;
       }
 
       try {
+        // 🚀 OBTENER CONFIGURACIÓN DE CORREOS DESDE SUPABASE
+        const { data: settings } = await supabase.from('store_settings').select('*').eq('id', 'default').single();
+        
+        // Defaults en Inglés para el Cliente
+        let clientSubject = `Thank you for your purchase, ${clientName}! Order #${shortOrderId}`;
+        let clientMessage = `Your payment has been successfully processed and we are ready to start preparing your custom items. Here is the exact breakdown of your purchase:`;
+
+        // Defaults en Inglés para el Admin
+        let adminSubject = `🚨 NEW PAID ORDER - $${totalToDisplay} (ID: #${shortOrderId})`;
+        let adminMessage = `A new order has been processed in the store. Review the details below:`;
+
+        if (settings) {
+          if (settings.email_order_subject) {
+            clientSubject = settings.email_order_subject
+              .replace(/{clientName}/g, clientName)
+              .replace(/{orderId}/g, shortOrderId);
+          }
+          if (settings.email_order_message) {
+            clientMessage = settings.email_order_message
+              .replace(/{clientName}/g, clientName)
+              .replace(/{orderId}/g, shortOrderId);
+          }
+          if (settings.admin_email_subject) {
+            adminSubject = settings.admin_email_subject
+              .replace(/{clientName}/g, clientName)
+              .replace(/{orderId}/g, shortOrderId)
+              .replace(/{totalToDisplay}/g, totalToDisplay);
+          }
+          if (settings.admin_email_message) {
+            adminMessage = settings.admin_email_message
+              .replace(/{clientName}/g, clientName)
+              .replace(/{orderId}/g, shortOrderId)
+              .replace(/{totalToDisplay}/g, totalToDisplay);
+          }
+        }
+
         // CORREO 1: PARA EL CLIENTE
         await resend.emails.send({
           from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>',
           replyTo: 'gregorick.liriano@gmail.com',
           to: clientEmailAddress, 
-          subject: `¡Gracias por tu compra, ${clientName}! Pedido #${shortOrderId}`,
+          subject: clientSubject,
           html: `
             <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
               <div style="background-color: #000; padding: 24px; text-align: center;">
                 <h1 style="color: #fff; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;">Fieldstone Embroidery</h1>
               </div>
               <div style="padding: 30px;">
-                <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola ${clientName}! Hemos recibido tu pedido.</h2>
-                <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:</p>
+                <h2 style="color: #111827; margin-top: 0; font-size: 22px;">Hello ${clientName}! We have received your order.</h2>
+                <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">${clientMessage}</p>
                 
                 ${deliveryHtml}
 
                 <div style="margin-bottom: 25px;">${unifiedItemsHtml}</div>
                 
                 <div style="text-align: right; padding: 20px 0; border-top: 2px solid #f3f4f6; margin-bottom: 25px;">
-                  <span style="font-size: 16px; color: #374151; font-weight: 900; text-transform: uppercase;">Total Pagado:</span>
+                  <span style="font-size: 16px; color: #374151; font-weight: 900; text-transform: uppercase;">Total Paid:</span>
                   <span style="font-size: 24px; color: #10b981; font-weight: 900; margin-left: 15px;">$${totalToDisplay}</span>
                 </div>
                 <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; border-left: 4px solid #000;">
-                  <p style="margin: 0; color: #374151; font-size: 14px;"><strong>ID de Transacción Stripe:</strong> <span style="font-family: monospace; font-size: 15px;">${paymentIntentId}</span></p>
-                  <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;"><strong>ID de Pedido Interno:</strong> <span style="font-family: monospace; font-size: 15px;">${orderId}</span></p>
+                  <p style="margin: 0; color: #374151; font-size: 14px;"><strong>Stripe Transaction ID:</strong> <span style="font-family: monospace; font-size: 15px;">${paymentIntentId}</span></p>
+                  <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;"><strong>Internal Order ID:</strong> <span style="font-family: monospace; font-size: 15px;">${orderId}</span></p>
                 </div>
               </div>
             </div>
@@ -217,32 +253,33 @@ export async function POST(req: Request) {
         await resend.emails.send({
           from: 'Notificaciones <info@fieldstoneembroidery.com>',
           to: 'gregorick.liriano@gmail.com', 
-          subject: `🚨 NUEVO PEDIDO PAGADO - $${totalToDisplay} (ID: #${shortOrderId})`,
+          subject: adminSubject,
           html: `
             <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 2px solid #10b981; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
               <div style="background-color: #10b981; padding: 20px; text-align: center;">
-                <h2 style="color: #fff; margin: 0; font-size: 22px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">¡Nuevo Pedido Pagado!</h2>
+                <h2 style="color: #fff; margin: 0; font-size: 22px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px;">New Paid Order!</h2>
               </div>
               <div style="padding: 24px;">
+                <p style="color: #4b5563; font-size: 14px; margin-bottom: 20px; font-weight: 600;">${adminMessage}</p>
                 <div style="background-color: #ecfdf5; padding: 20px; border-radius: 12px; border: 1px solid #a7f3d0; margin-bottom: 24px;">
                   <table style="width: 100%; border: none;">
                     <tr>
                       <td style="padding-bottom: 16px;">
-                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Monto Cobrado</span><br/>
+                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Amount Collected</span><br/>
                         <span style="font-size: 24px; font-weight: 900; color: #065f46;">$${totalToDisplay}</span>
                       </td>
                       <td style="padding-bottom: 16px;">
-                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">ID de Pedido Interno</span><br/>
+                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Internal Order ID</span><br/>
                         <span style="font-size: 15px; font-weight: 900; font-family: monospace; color: #065f46;">${orderId}</span>
                       </td>
                     </tr>
                     <tr>
                       <td>
-                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Cliente</span><br/>
+                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Customer</span><br/>
                         <span style="font-size: 14px; font-weight: 700; color: #065f46;">${clientName} (<a href="mailto:${clientEmailAddress}" style="color: #047857;">${clientEmailAddress}</a>)</span>
                       </td>
                       <td>
-                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">ID de Transacción Stripe</span><br/>
+                        <span style="font-size: 10px; font-weight: 900; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">Stripe Transaction ID</span><br/>
                         <span style="font-size: 14px; font-weight: 700; font-family: monospace; color: #065f46;">${paymentIntentId}</span>
                       </td>
                     </tr>

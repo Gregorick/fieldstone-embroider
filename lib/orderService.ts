@@ -9,7 +9,6 @@ export async function createCompleteOrder(
     total: number; 
     shipping_method?: string; 
     shipping_cost?: number; 
-    // 🔥 Añadimos los campos de dirección
     shipping_address?: string;
     shipping_city?: string;
     shipping_state?: string;
@@ -25,11 +24,9 @@ export async function createCompleteOrder(
 
     // 2. Si hay logo, convertirlo de Base64 a Archivo y subirlo al Bucket de Supabase
     if (base64Logo) {
-      // Truco para convertir Base64 a Blob (Archivo)
       const fetchResponse = await fetch(base64Logo);
       const blob = await fetchResponse.blob();
       
-      // Crear un nombre único para que no se sobreescriban
       const fileExtension = blob.type.split('/')[1] || 'png';
       const uniqueFileName = `logo-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
 
@@ -42,7 +39,6 @@ export async function createCompleteOrder(
 
       if (uploadError) throw new Error(`Error uploading logo: ${uploadError.message}`);
 
-      // Obtener el link público de descarga para el admin
       const { data: publicUrlData } = supabase.storage
         .from('customer-logos')
         .getPublicUrl(uniqueFileName);
@@ -60,7 +56,6 @@ export async function createCompleteOrder(
       order_status: 'processing',
       shipping_method: customerDetails.shipping_method || 'shipping',
       shipping_cost: customerDetails.shipping_cost || 0,
-      // 🔥 Guardamos los datos de la dirección en la BD
       shipping_address: customerDetails.shipping_address || null,
       shipping_city: customerDetails.shipping_city || null,
       shipping_state: customerDetails.shipping_state || null,
@@ -74,6 +69,10 @@ export async function createCompleteOrder(
     const itemsToInsert = cartItems.map(item => ({
       order_id: order.id,
       product_id: item.productId,
+      slug: item.slug,                                  // 🚀 AÑADIDO: Para los enlaces
+      image_url: item.image,                            // 🚀 AÑADIDO: Para la foto en historial
+      style: item.style || '',                          // 🚀 AÑADIDO: Código maestro de SanMar
+      sku: item.unique_key || item.sku || '',           // 🚀 AÑADIDO: ID exacto de la variante
       product_name: item.title,
       quantity: item.quantity,
       unit_price: item.price,
@@ -88,12 +87,12 @@ export async function createCompleteOrder(
     const { error: itemsError } = await supabase.from('order_items').insert(itemsToInsert);
     if (itemsError) throw new Error(`Error creating order items: ${itemsError.message}`);
 
-    // 5. Si el usuario NO está logueado, guardar el ID de la orden en LocalStorage (durará 7 días)
+    // 5. Si el usuario NO está logueado, guardar el ID de la orden en LocalStorage
     if (!userId) {
       saveGuestOrderToLocal(order.id);
     }
 
-    // 6. Limpiar el Logo del LocalStorage (ya no se necesita, está en la Nube)
+    // 6. Limpiar el Logo del LocalStorage
     localStorage.removeItem("user_custom_logo");
 
     return { success: true, orderId: order.id };
@@ -122,14 +121,12 @@ export async function linkGuestOrdersToAccount(userId: string) {
   const existingOrders = JSON.parse(existingOrdersStr);
   if (existingOrders.length === 0) return;
 
-  // Filtrar solo las órdenes que tengan menos de 7 días de antigüedad (7 días = 604800000 ms)
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
   const validOrderIds = existingOrders
     .filter((o: any) => (Date.now() - o.timestamp) < SEVEN_DAYS_MS)
     .map((o: any) => o.id);
 
   if (validOrderIds.length > 0) {
-    // Actualizar la base de datos para asignar estas órdenes al nuevo usuario
     const { error } = await supabase
       .from('orders')
       .update({ user_id: userId })
@@ -140,6 +137,5 @@ export async function linkGuestOrdersToAccount(userId: string) {
     }
   }
 
-  // Limpiar el LocalStorage porque ya están enlazadas
   localStorage.removeItem('guest_pending_orders');
 }

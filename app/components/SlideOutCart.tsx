@@ -26,7 +26,7 @@ export default function SlideOutCart() {
       setCheckingStock(true);
       const stocksMap: Record<string, number> = {};
 
-      // Extraer estilos únicos presentes en el carrito usando item.style
+      // Extraer estilos únicos presentes en el carrito usando item.style o item.slug
       const uniqueStyles = Array.from(new Set(cartItems.map((item: any) => item.style || item.slug)));
 
       for (const style of uniqueStyles) {
@@ -56,7 +56,7 @@ export default function SlideOutCart() {
 
   // Validar si algún producto en el carrito excede el stock actual en vivo
   const hasStockIssues = cartItems.some((item: any) => {
-    const stockKey = String(item.unique_key || item.sku);
+    const stockKey = String(item.unique_key || item.sku || item.style);
     const stock = itemStocks[stockKey];
     return stock !== undefined && item.quantity > stock;
   });
@@ -101,11 +101,9 @@ export default function SlideOutCart() {
           ) : (
             <div className="space-y-6">
               {cartItems.map((item) => {
-                const stockKey = String(item.unique_key || item.sku);
+                const stockKey = String((item as any).unique_key || (item as any).sku || (item as any).style);
                 const itemStock = itemStocks[stockKey];
                 
-                // Si itemStock es undefined (aún cargando o sin datos), permitimos operar temporalmente, 
-                // pero si ya se cargó y hay límite, aplicamos la regla estricta.
                 const isExceeding = itemStock !== undefined && item.quantity > itemStock;
                 const isMaxReached = itemStock !== undefined && item.quantity >= itemStock;
 

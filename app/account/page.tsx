@@ -6,14 +6,26 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import { useCart } from "../context/CartContext"; 
 import { 
   User, MapPin, Package, LogOut, Camera, Save, 
   Plus, Trash2, X, AlertTriangle, Star, Truck, 
-  ChevronLeft, ChevronRight, Eye, Copy, Check
+  ChevronLeft, ChevronRight, Eye, Copy, Check,
+  RefreshCw 
 } from "lucide-react";
+
+// 🚀 Helper para extraer el UUID limpio
+const extractCleanId = (idStr: string) => {
+  if (!idStr) return "";
+  const match = idStr.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+  return match ? match[0] : idStr;
+};
 
 export default function AccountPage() {
   const router = useRouter();
+  
+  const { addToCart, setIsCartOpen } = useCart();
+
   const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
@@ -33,11 +45,12 @@ export default function AccountPage() {
     first_name: "", last_name: "", street: "", city: "", state: "", zip: "", phone: ""
   });
 
-  // Estado para almacenar las órdenes y slugs
+  // Estado para almacenar las órdenes, slugs reales e imágenes reales
   const [orders, setOrders] = useState<any[]>([]);
   const [realSlugs, setRealSlugs] = useState<Record<string, string>>({});
+  const [realImages, setRealImages] = useState<Record<string, string>>({}); 
   
-  // 🚀 ESTADOS PARA LA PAGINACIÓN DE ÓRDENES
+  // ESTADOS PARA LA PAGINACIÓN DE ÓRDENES
   const [currentPage, setCurrentPage] = useState(1);
   const ordersPerPage = 10;
   
@@ -73,7 +86,7 @@ export default function AccountPage() {
       // Cargar Direcciones
       fetchAddresses(user.id);
       
-      // Cargar Órdenes y extraer los Slugs reales para los enlaces
+      // Cargar Órdenes
       fetchOrders(user.id);
 
       setLoading(false);
@@ -100,30 +113,77 @@ export default function AccountPage() {
       .order("created_at", { ascending: false });
       
     if (data) {
-      setOrders(data);
-      
-      // 🔥 Buscamos los slugs en la BD para que los enlaces de productos funcionen
       const productIds = new Set<string>();
+      const stylesToFetch = new Set<string>(); // 🚀 NUEVO: Colección de estilos para cruzar con Supabase
+      
+      // 1. Extraemos IDs y Estilos de las órdenes
       data.forEach(order => {
         if (order.order_items) {
           order.order_items.forEach((item: any) => {
-            if (item.product_id) productIds.add(item.product_id);
+            if (item.product_id) {
+              productIds.add(extractCleanId(item.product_id));
+            }
+            // 🚀 Extraemos el estilo del nombre (Ej: "POLO. 203690" -> "203690") para buscarlo en Supabase
+            let rawStyle = item.style || item.sku || "";
+            if (!rawStyle && item.product_name && item.product_name.includes(".")) {
+              const titleParts = item.product_name.split(".");
+              rawStyle = titleParts[titleParts.length - 1].trim();
+            }
+            if (rawStyle) {
+              const baseStyle = rawStyle.includes("-") ? rawStyle.split("-")[0] : rawStyle;
+              stylesToFetch.add(baseStyle.trim().toUpperCase());
+            }
           });
         }
       });
       
-      if (productIds.size > 0) {
-        const { data: productsData } = await supabase.from('products').select('id, slug').in('id', Array.from(productIds));
-        if (productsData) {
-          const newSlugs: Record<string, string> = {};
-          productsData.forEach(p => { newSlugs[p.id] = p.slug; });
-          setRealSlugs(newSlugs);
+      const newSlugs: Record<string, string> = {};
+      const newImages: Record<string, string> = {}; 
+
+      // 🚀 2A. Consulta a Supabase por Estilo (Magia para órdenes viejas)
+      if (stylesToFetch.size > 0) {
+        const { data: stylesData } = await supabase
+          .from('products_unique_styles')
+          .select('style, slug, image_url')
+          .in('style', Array.from(stylesToFetch)); // BUSCAMOS POR COLUMNA 'STYLE'
+        
+        if (stylesData) {
+          stylesData.forEach(p => { 
+            if (p.style) {
+              if (p.slug) newSlugs[`style_${p.style}`] = p.slug; 
+              if (p.image_url) newImages[`style_${p.style}`] = p.image_url; 
+            }
+          });
         }
       }
+
+      // 🚀 2B. Consulta a Supabase por ID (Para órdenes recientes)
+      if (productIds.size > 0) {
+        const idsArray = Array.from(productIds);
+        
+        const { data: variantsData } = await supabase.from('products').select('id, slug, image_url').in('id', idsArray);
+        if (variantsData) {
+          variantsData.forEach(p => { 
+            if (p.slug) newSlugs[p.id] = p.slug; 
+            if (p.image_url) newImages[p.id] = p.image_url; 
+          });
+        }
+
+        const { data: uniqueData } = await supabase.from('products_unique_styles').select('id, slug, image_url').in('id', idsArray);
+        if (uniqueData) {
+          uniqueData.forEach(p => { 
+            if (p.slug && !newSlugs[p.id]) newSlugs[p.id] = p.slug; 
+            if (p.image_url && !newImages[p.id]) newImages[p.id] = p.image_url; 
+          });
+        }
+      }
+      
+      setRealSlugs(newSlugs);
+      setRealImages(newImages);
+      setOrders(data);
     }
   };
 
-  // 🚀 LÓGICA DE PAGINACIÓN CALCULADA
   const totalPages = Math.ceil(orders.length / ordersPerPage) || 1;
   const paginatedOrders = useMemo(() => {
     const start = (currentPage - 1) * ordersPerPage;
@@ -263,6 +323,61 @@ export default function AccountPage() {
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     }
+  };
+
+  // 🚀 FUNCIÓN PARA VOLVER A ORDENAR
+  const handleReorder = (order: any) => {
+    if (!order.order_items || order.order_items.length === 0) return;
+
+    order.order_items.forEach((item: any) => {
+      const cleanId = extractCleanId(item.product_id);
+      
+      // Mismo proceso de extracción de estilo que usamos en el render
+      let rawStyle = item.style || item.sku || "";
+      if (!rawStyle && item.product_name && item.product_name.includes(".")) {
+        const titleParts = item.product_name.split(".");
+        rawStyle = titleParts[titleParts.length - 1].trim();
+      }
+      const baseStyle = rawStyle ? (rawStyle.includes("-") ? rawStyle.split("-")[0] : rawStyle).trim().toUpperCase() : "";
+
+      // Consultamos la variable extraída directamente a los mapas de Supabase
+      const dbSlug = realSlugs[cleanId] || (baseStyle ? realSlugs[`style_${baseStyle}`] : null);
+      const dbImage = realImages[cleanId] || (baseStyle ? realImages[`style_${baseStyle}`] : null);
+
+      let productSlug = dbSlug || item.slug || cleanId;
+      if (productSlug.match(/^[0-9a-fA-F]{8}-/)) {
+        productSlug = item.product_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      }
+
+      let liveImage = dbImage || item.image_url || item.image;
+      if (!liveImage || liveImage === "") {
+        liveImage = baseStyle ? `https://cdnm.sanmar.com/catalog/images/${baseStyle}.jpg` : null;
+      }
+
+      addToCart({
+        id: `${cleanId}-${item.color}-${item.size}-${item.decoration_method}-${item.location}-${Date.now()}`,
+        productId: cleanId, 
+        slug: productSlug, 
+        style: rawStyle, 
+        unique_key: item.unique_key || item.sku || "", 
+        title: item.product_name,
+        price: Number(item.unit_price),
+        quantity: item.quantity,
+        image: liveImage, 
+        size: item.size,
+        color: item.color,
+        decorationMethod: item.decoration_method || "EMB", 
+        location: item.location || "Standard Location",
+        extraComments: item.extra_comments || "",
+      } as any);
+    });
+
+    const firstLogo = order.order_items.find((i: any) => i.custom_logo_url)?.custom_logo_url;
+    if (firstLogo) {
+      localStorage.setItem("user_custom_logo", firstLogo);
+    }
+
+    setIsCartOpen(true);
   };
 
   if (loading && !user) return <div className="h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin" /></div>;
@@ -460,7 +575,6 @@ export default function AccountPage() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {/* 🚀 USAMOS LA LISTA PAGINADA (paginatedOrders) */}
                     {paginatedOrders.map((order) => (
                       <div key={order.id} className="border border-gray-200 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition-all bg-white">
                         
@@ -470,7 +584,6 @@ export default function AccountPage() {
                             <p className="text-xs font-black text-black uppercase">#{order.id.split('-')[0]}</p>
                           </div>
                           
-                          {/* 🔥 NUEVO BOTÓN PARA TRANS. ID EVITANDO QUE ROMPA EL DISEÑO */}
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Trans. ID</p>
                             {order.payment_id ? (
@@ -506,7 +619,6 @@ export default function AccountPage() {
                           </div>
                         </div>
 
-                        {/* 🚀 NUEVA SECCIÓN DE TRACKING PARA EL CLIENTE */}
                         {order.tracking_url && (
                           <div className="mb-6 p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                              <div className="flex items-center gap-3">
@@ -533,15 +645,43 @@ export default function AccountPage() {
                         
                         <div className="space-y-4">
                           {order.order_items && order.order_items.map((item: any) => {
-                            // 🔥 SLUG REAL BUSCADO EN LA BD
-                            const productSlug = realSlugs[item.product_id] || item.slug || item.product_id;
+                            const cleanId = extractCleanId(item.product_id);
+                            
+                            // 🚀 Extracción robusta de estilo
+                            let rawStyle = item.style || item.sku || "";
+                            if (!rawStyle && item.product_name && item.product_name.includes(".")) {
+                              const titleParts = item.product_name.split(".");
+                              rawStyle = titleParts[titleParts.length - 1].trim();
+                            }
+                            const baseStyle = rawStyle ? (rawStyle.includes("-") ? rawStyle.split("-")[0] : rawStyle).trim().toUpperCase() : "";
+
+                            // 🚀 Mapeo de Supabase en vivo (Por ID o Por Estilo)
+                            const dbSlug = realSlugs[cleanId] || (baseStyle ? realSlugs[`style_${baseStyle}`] : null);
+                            const dbImage = realImages[cleanId] || (baseStyle ? realImages[`style_${baseStyle}`] : null);
+                            
+                            let productSlug = dbSlug || item.slug || cleanId;
+                            
+                            // 🛡️ Regla de oro: NUNCA dejar que el slug sea un UUID
+                            if (productSlug.match(/^[0-9a-fA-F]{8}-/)) {
+                              productSlug = item.product_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+                            }
+
+                            let displayImage = dbImage || item.image_url || item.image;
+                            if (!displayImage || displayImage === "") {
+                              displayImage = baseStyle ? `https://cdnm.sanmar.com/catalog/images/${baseStyle}.jpg` : "/placeholder.png";
+                            }
+
                             return (
                               <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                                 <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-200 flex-shrink-0 shadow-sm">
-                                  <Package size={20} className="text-gray-400" />
+                                  <img 
+                                    src={displayImage} 
+                                    alt={item.product_name} 
+                                    className="w-full h-full object-contain mix-blend-multiply"
+                                    onError={(e) => { e.currentTarget.src = "https://via.placeholder.com/150/f3f3f3/a3a3a3?text=N/A"; }}
+                                  />
                                 </div>
                                 <div className="flex-1">
-                                  {/* 🔥 ENLACE ACTUALIZADO AL SLUG REAL */}
                                   <Link 
                                     href={`/products/${productSlug}`} 
                                     className="text-xs font-black text-black uppercase tracking-tight hover:underline hover:text-blue-600 transition-all block w-fit"
@@ -578,10 +718,19 @@ export default function AccountPage() {
                           })}
                         </div>
                         
+                        <div className="mt-6 pt-6 border-t border-gray-100 flex justify-end">
+                          <button 
+                            onClick={() => handleReorder(order)} 
+                            className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-md flex items-center gap-2"
+                          >
+                            <RefreshCw size={14} /> Reorder
+                          </button>
+                        </div>
+                        
                       </div>
                     ))}
 
-                    {/* 🚀 CONTROLES DE PAGINACIÓN */}
+                    {/* CONTROLES DE PAGINACIÓN */}
                     {orders.length > 0 && (
                       <div className="flex items-center justify-between pt-6 mt-6 border-t border-gray-200">
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
@@ -648,7 +797,7 @@ export default function AccountPage() {
         </div>
       )}
 
-      {/* 🔥 MODAL PARA COPIAR EL TRANS ID LARGO */}
+      {/* MODAL PARA COPIAR EL TRANS ID LARGO */}
       {selectedTransId && (
         <div 
           className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200" 

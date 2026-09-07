@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useCart } from "../context/CartContext";
+import { X, Plus, Minus, Trash2, ShoppingBag, Lock, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import { getLiveInventory } from "@/app/actions/sanmarApi";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { useCart } from "../context/CartContext";
-import { Trash2, Plus, Minus, ChevronRight, ShoppingBag, ArrowRight, AlertCircle, Lock } from "lucide-react";
-import { getLiveInventory } from "@/app/actions/sanmarApi";
+import { ChevronRight, ArrowRight } from "lucide-react";
 
 export default function CartPage() {
   const { cartItems, updateQuantity, removeFromCart, cartTotal } = useCart();
@@ -55,7 +56,7 @@ export default function CartPage() {
 
   // Validar si algún producto en el carrito excede el stock actual en vivo
   const hasStockIssues = cartItems.some((item: any) => {
-    const stockKey = String(item.unique_key || item.sku);
+    const stockKey = String(item.unique_key || item.sku || item.style);
     const stock = itemStocks[stockKey];
     return stock !== undefined && item.quantity > stock;
   });
@@ -99,7 +100,7 @@ export default function CartPage() {
 
               <div className="space-y-8">
                 {cartItems.map((item) => {
-                  const stockKey = String(item.unique_key || item.sku);
+                  const stockKey = String((item as any).unique_key || (item as any).sku || (item as any).style);
                   const itemStock = itemStocks[stockKey];
                   const isExceeding = itemStock !== undefined && item.quantity > itemStock;
                   const isMaxReached = itemStock !== undefined && item.quantity >= itemStock;

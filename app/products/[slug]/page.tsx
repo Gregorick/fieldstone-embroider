@@ -363,13 +363,13 @@ function ProductPageContent() {
     
     const combinedLocations = [location1, location2, location3].filter(Boolean).join(" + ");
 
-    // 🔑 AQUÍ MANDAMOS EL STYLE Y EL UNIQUE_KEY CORRECTAMENTE AL CARRITO
+    // 🔑 AQUÍ MANDAMOS EL STYLE Y EL UNIQUE_KEY CORRECTAMENTE AL CARRITO CON "as any"
     addToCart({
       id: `${product.id}-${selectedColor}-${selectedSize}-${decorationMethod}-${location1}`,
       productId: product.id,
       slug: product.slug || slug as string,
-      style: product.style, // 🔑 Estilo exacto para la API de SanMar (ej. RS1003)
-      unique_key: exactVariant?.unique_key || exactVariant?.sku, // 🔑 ID exacto de la variante
+      style: product.style,
+      unique_key: exactVariant?.unique_key || exactVariant?.sku,
       title: product.title || product.product_name,
       price: unitPrice,
       quantity: numericQuantity,
@@ -377,10 +377,9 @@ function ProductPageContent() {
       size: selectedSize,
       color: selectedColor,
       decorationMethod: decorationMethod.toUpperCase(),
-      // @ts-expect-error
       location: combinedLocations,
       extraComments: extraComments
-    });
+    } as any);
     setIsCartOpen(true);
   };
 

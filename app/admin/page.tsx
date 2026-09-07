@@ -9,8 +9,14 @@ import {
   LogOut, Search, Eye, Check, X, Camera, Save, Lock, Grip,
   Package, Download, BarChart3, Trash2, DollarSign, Truck,
   ChevronLeft, ChevronRight, BellRing, Send, AlertTriangle,
-  MessageSquare, PanelBottom, MapPin
+  MessageSquare, PanelBottom, MapPin, Mail
 } from "lucide-react";
+
+const extractCleanId = (idStr: string) => {
+  if (!idStr) return "";
+  const match = idStr.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+  return match ? match[0] : idStr;
+};
 
 const DEFAULT_TIERS = [
   { min: 1, max: 11, emb: 12.45, sp: 8.00, dtf: 10.50, shipping: 40 },
@@ -28,7 +34,7 @@ export default function AdminDashboard() {
   const [mounted, setMounted] = useState(false);
   const [adminUser, setAdminUser] = useState<any>(null);
 
-  const [profile, setProfile] = useState({ first_name: "", last_name: "", avatar_url: "" });
+  const [profile, setProfile] = useState({ first_name: "", last_name: "", avatar_url: "", role: "" });
   const [password, setPassword] = useState("");
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +65,25 @@ export default function AdminDashboard() {
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
 
+  // 🚀 ESTADO EXTENDIDO PARA WEBMAILS 
+  const [activeEmailTab, setActiveEmailTab] = useState("customer_receipt");
+  const [emailSettings, setEmailSettings] = useState({
+    orderSubject: "¡Gracias por tu compra, {clientName}! Pedido #{orderId}",
+    orderMessage: "Tu pago se ha procesado correctamente y estamos listos para empezar a preparar tus artículos personalizados. Aquí tienes el desglose exacto de tu compra:",
+    adminSubject: "🚨 NUEVO PEDIDO PAGADO - ${totalToDisplay} (ID: #{orderId})",
+    adminMessage: "Se ha procesado un nuevo pedido en la tienda. Revisa los detalles a continuación:",
+    shippedSubject: "Your Order #{orderId} is on its way! 🚚",
+    shippedMessage: "Great news! Your order <strong>#{orderId}</strong> has been shipped and is currently on its way to you.",
+    pickupSubject: "Your Order #{orderId} is Ready for Pickup! 📍",
+    pickupMessage: "Great news! Your custom items for order <strong>#{orderId}</strong> are finished and ready for you to pick up.<br/><br/>Please visit our facility at your earliest convenience:<br/><div style=\"background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 16px; border-radius: 8px; margin-top: 15px;\"><h4 style=\"margin: 0 0 8px 0; color: #065f46; text-transform: uppercase; font-size: 14px; letter-spacing: 1px;\">Fieldstone Embroidery</h4><p style=\"margin: 0; color: #047857; font-size: 14px; line-height: 1.5;\">104 Kingston St<br/>Lawrence, MA 01843</p></div>",
+    deliveredSubject: "Your Order #{orderId} has been delivered! 🎁",
+    deliveredMessage: "Excellent news! Your order <strong>#{orderId}</strong> has been successfully delivered. We hope you love your custom items!",
+    completedSubject: "Your Order #{orderId} is complete! ✅",
+    completedMessage: "Your order <strong>#{orderId}</strong> has been marked as completed. Thank you for trusting Fieldstone Embroidery for your custom apparel needs."
+  });
+
   const [realSlugs, setRealSlugs] = useState<Record<string, string>>({});
+  const [realImages, setRealImages] = useState<Record<string, string>>({});
 
   const [footerData, setFooterData] = useState({
     companyName: "Fieldstone Embroidery Store",
@@ -118,54 +142,45 @@ export default function AdminDashboard() {
     if (!user) return router.push("/login");
 
     const { data: profileData, error: profileError } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-    if (profileError || !profileData || profileData.role !== 'admin') return router.push("/account");
+    
+    if (profileError || !profileData || !['admin', 'editor'].includes(profileData.role)) {
+      return router.push("/account");
+    }
 
     setAdminUser(user);
-    setProfile({ first_name: profileData.first_name || "", last_name: profileData.last_name || "", avatar_url: profileData.avatar_url || "" });
+    setProfile({ 
+      first_name: profileData.first_name || "", 
+      last_name: profileData.last_name || "", 
+      avatar_url: profileData.avatar_url || "",
+      role: profileData.role 
+    });
 
     await fetchOrders();
-    fetchUsers();
+    if (profileData.role === 'admin') {
+      fetchUsers();
+    }
     fetchFormsData(); 
 
-    // 🚀 CARGAR TODAS LAS CATEGORÍAS SIN LÍMITE
     let allCatsDb: string[] = [];
     let catFrom = 0;
     let fetchMoreCats = true;
     while (fetchMoreCats) {
-      const { data: catData } = await supabase
-        .from("products_unique_styles")
-        .select("category")
-        .not("category", "is", null)
-        .range(catFrom, catFrom + 999);
-
-      if (!catData || catData.length === 0) {
-        fetchMoreCats = false;
-      } else {
+      const { data: catData } = await supabase.from("products_unique_styles").select("category").not("category", "is", null).range(catFrom, catFrom + 999);
+      if (!catData || catData.length === 0) { fetchMoreCats = false; } else {
         allCatsDb.push(...catData.map((item: any) => item.category?.trim()).filter(Boolean));
-        if (catData.length < 1000) fetchMoreCats = false;
-        else catFrom += 1000;
+        if (catData.length < 1000) fetchMoreCats = false; else catFrom += 1000;
       }
     }
     const fetchedCats = Array.from(new Set(allCatsDb)).sort();
 
-    // 🚀 CARGAR TODAS LAS MARCAS DINÁMICAMENTE EN BUCLE SIN LÍMITE
     let allBrandsDb: string[] = [];
     let brandFrom = 0;
     let fetchMoreBrands = true;
-
     while (fetchMoreBrands) {
-      const { data: brandData } = await supabase
-        .from("products_unique_styles")
-        .select("brand")
-        .not("brand", "is", null)
-        .range(brandFrom, brandFrom + 999);
-
-      if (!brandData || brandData.length === 0) {
-        fetchMoreBrands = false;
-      } else {
+      const { data: brandData } = await supabase.from("products_unique_styles").select("brand").not("brand", "is", null).range(brandFrom, brandFrom + 999);
+      if (!brandData || brandData.length === 0) { fetchMoreBrands = false; } else {
         allBrandsDb.push(...brandData.map((item: any) => item.brand?.trim()).filter(Boolean));
-        if (brandData.length < 1000) fetchMoreBrands = false;
-        else brandFrom += 1000;
+        if (brandData.length < 1000) fetchMoreBrands = false; else brandFrom += 1000;
       }
     }
     const fetchedBrands = Array.from(new Set(allBrandsDb)).sort();
@@ -176,15 +191,12 @@ export default function AdminDashboard() {
       const savedCats = settings.visible_categories || [];
       const savedBrands = settings.visible_brands || [];
 
-      // Combinar asegurando que las marcas guardadas mantengan su orden, 
-      // y anexar automáticamente cualquier marca nueva al final.
       const mergedCats = Array.from(new Set([...savedCats, ...fetchedCats]));
       const mergedBrands = Array.from(new Set([...savedBrands, ...fetchedBrands]));
 
       setAllCategories(mergedCats);
       setAllBrands(mergedBrands);
 
-      // Hacemos que cualquier marca/categoría nueva sea visible por defecto para que no se pierda
       const newCats = fetchedCats.filter((c: string) => !savedCats.includes(c));
       const newBrands = fetchedBrands.filter((b: string) => !savedBrands.includes(b));
       
@@ -195,6 +207,22 @@ export default function AdminDashboard() {
       if (settings.small_order_fee_amount !== undefined) setFeeAmount(settings.small_order_fee_amount);
       if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
       
+      setEmailSettings(prev => ({
+        ...prev,
+        orderSubject: settings.email_order_subject || prev.orderSubject,
+        orderMessage: settings.email_order_message || prev.orderMessage,
+        adminSubject: settings.admin_email_subject || prev.adminSubject,
+        adminMessage: settings.admin_email_message || prev.adminMessage,
+        shippedSubject: settings.email_shipped_subject || prev.shippedSubject,
+        shippedMessage: settings.email_shipped_message || prev.shippedMessage,
+        pickupSubject: settings.email_pickup_subject || prev.pickupSubject,
+        pickupMessage: settings.email_pickup_message || prev.pickupMessage,
+        deliveredSubject: settings.email_delivered_subject || prev.deliveredSubject,
+        deliveredMessage: settings.email_delivered_message || prev.deliveredMessage,
+        completedSubject: settings.email_completed_subject || prev.completedSubject,
+        completedMessage: settings.email_completed_message || prev.completedMessage
+      }));
+
       setFooterData({
         companyName: settings.footer_company_name || "Fieldstone Embroidery Store",
         address: settings.footer_address || "Santo Domingo, Distrito Nacional\nDominican Republic",
@@ -258,8 +286,6 @@ export default function AdminDashboard() {
 
   const saveSettings = async () => {
     setLoading(true);
-    
-    // Guardamos las marcas y categorías respetando el orden exacto de allCategories y allBrands
     const finalCategories = allCategories.filter(cat => visibleCategories.includes(cat));
     const finalBrands = allBrands.filter(brand => visibleBrands.includes(brand));
 
@@ -270,6 +296,18 @@ export default function AdminDashboard() {
       small_order_fee_threshold: feeThreshold, 
       small_order_fee_amount: feeAmount, 
       decoration_tiers: pricingTiers,
+      email_order_subject: emailSettings.orderSubject, 
+      email_order_message: emailSettings.orderMessage,
+      admin_email_subject: emailSettings.adminSubject,
+      admin_email_message: emailSettings.adminMessage,
+      email_shipped_subject: emailSettings.shippedSubject,
+      email_shipped_message: emailSettings.shippedMessage,
+      email_pickup_subject: emailSettings.pickupSubject,
+      email_pickup_message: emailSettings.pickupMessage,
+      email_delivered_subject: emailSettings.deliveredSubject,
+      email_delivered_message: emailSettings.deliveredMessage,
+      email_completed_subject: emailSettings.completedSubject,
+      email_completed_message: emailSettings.completedMessage,
       footer_company_name: footerData.companyName,
       footer_address: footerData.address,
       footer_email: footerData.email,
@@ -339,15 +377,64 @@ export default function AdminDashboard() {
     setTrackingUrlInput("");
 
     if (order.order_items && order.order_items.length > 0) {
-      const productIds = order.order_items.map((item: any) => item.product_id).filter(Boolean);
-      if (productIds.length > 0) {
-        const { data } = await supabase.from('products').select('id, slug').in('id', productIds);
-        if (data) {
-          const newSlugs: Record<string, string> = {};
-          data.forEach(p => { newSlugs[p.id] = p.slug; });
-          setRealSlugs(prev => ({ ...prev, ...newSlugs }));
+      const productIds = new Set<string>();
+      const stylesToFetch = new Set<string>();
+
+      order.order_items.forEach((item: any) => {
+        if (item.product_id) {
+          productIds.add(extractCleanId(item.product_id));
+        }
+        
+        let rawStyle = item.style || item.sku || "";
+        if (!rawStyle && item.product_name && item.product_name.includes(".")) {
+          const titleParts = item.product_name.split(".");
+          rawStyle = titleParts[titleParts.length - 1].trim();
+        }
+        if (rawStyle) {
+          const baseStyle = rawStyle.includes("-") ? rawStyle.split("-")[0] : rawStyle;
+          stylesToFetch.add(baseStyle.trim().toUpperCase());
+        }
+      });
+
+      const newSlugs: Record<string, string> = {};
+      const newImages: Record<string, string> = {};
+
+      if (stylesToFetch.size > 0) {
+        const { data: stylesData } = await supabase
+          .from('products_unique_styles')
+          .select('style, slug, image_url')
+          .in('style', Array.from(stylesToFetch));
+        
+        if (stylesData) {
+          stylesData.forEach(p => {
+            if (p.style) {
+              if (p.slug) newSlugs[`style_${p.style}`] = p.slug;
+              if (p.image_url) newImages[`style_${p.style}`] = p.image_url;
+            }
+          });
         }
       }
+
+      if (productIds.size > 0) {
+        const idsArray = Array.from(productIds);
+        const { data: variantsData } = await supabase.from('products').select('id, slug, image_url').in('id', idsArray);
+        if (variantsData) {
+          variantsData.forEach(p => {
+            if (p.slug) newSlugs[p.id] = p.slug;
+            if (p.image_url) newImages[p.id] = p.image_url;
+          });
+        }
+        const { data: uniqueData } = await supabase.from('products_unique_styles').select('id, slug, image_url').in('id', idsArray);
+        if (uniqueData) {
+          uniqueData.forEach(p => {
+            if (p.slug && !newSlugs[p.id]) newSlugs[p.id] = p.slug;
+            if (p.image_url && !newImages[p.id]) newImages[p.id] = p.image_url;
+          });
+        }
+      }
+
+      setRealSlugs(prev => ({ ...prev, ...newSlugs }));
+      setRealImages(prev => ({ ...prev, ...newImages }));
     }
 
     if (unseenOrders.some(o => o.id === order.id)) {
@@ -560,7 +647,9 @@ export default function AdminDashboard() {
            </div>
            <div>
              <p className="text-xs font-bold uppercase tracking-wider">{profile.first_name || "Admin"}</p>
-             <p className="text-[9px] text-gray-400">Store Manager</p>
+             <p className="text-[9px] text-blue-400 font-bold uppercase tracking-widest">
+               {profile.role === 'admin' ? 'Store Manager' : 'Store Editor'}
+             </p>
            </div>
         </div>
 
@@ -570,7 +659,13 @@ export default function AdminDashboard() {
           <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "pricing" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><DollarSign size={16} /> Pricing Rules</button>
           <button onClick={() => setActiveTab("categories")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "categories" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><FolderTree size={16} /> Shop Filters</button>
           <button onClick={() => setActiveTab("footer")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "footer" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><PanelBottom size={16} /> Footer Details</button>
-          <button onClick={() => setActiveTab("users")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "users" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><Users size={16} /> Users</button>
+          
+          <button onClick={() => setActiveTab("webmails")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "webmails" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><Mail size={16} /> Webmails</button>
+
+          {profile.role === 'admin' && (
+            <button onClick={() => setActiveTab("users")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "users" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><Users size={16} /> Users</button>
+          )}
+          
           <button onClick={() => setActiveTab("forms")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "forms" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><MessageSquare size={16} /> Form Data</button>
           <button onClick={() => setActiveTab("profile")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "profile" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><User size={16} /> Admin Profile</button>
         </nav>
@@ -688,6 +783,186 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 🚀 PESTAÑA: WEBMAILS MEJORADA */}
+        {activeTab === "webmails" && (
+          <div className="animate-in fade-in duration-500 max-w-4xl">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Email Templates</h2>
+              <button onClick={saveSettings} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2">
+                <Save size={14} /> Save Templates
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200">
+              <button 
+                onClick={() => setActiveEmailTab("customer_receipt")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "customer_receipt" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Customer Receipt
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("admin_notify")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "admin_notify" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Admin Notice
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("shipped")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "shipped" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Shipped
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("pickup")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "pickup" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Pickup
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("delivered")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "delivered" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Delivered
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("completed")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "completed" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Completed
+              </button>
+            </div>
+
+            {/* CONTENIDO DE LAS PESTAÑAS */}
+            {activeEmailTab === "customer_receipt" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Customer Receipt Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent automatically to the customer when a payment is completed in Stripe.</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.orderSubject} onChange={e => setEmailSettings({...emailSettings, orderSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.orderMessage} onChange={e => setEmailSettings({...emailSettings, orderMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "admin_notify" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Admin Notification Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent automatically to the store administrators when a new order is paid.</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{totalToDisplay}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.adminSubject} onChange={e => setEmailSettings({...emailSettings, adminSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.adminMessage} onChange={e => setEmailSettings({...emailSettings, adminMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "shipped" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Order Shipped Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Shipped".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.shippedSubject} onChange={e => setEmailSettings({...emailSettings, shippedSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.shippedMessage} onChange={e => setEmailSettings({...emailSettings, shippedMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "pickup" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Ready for Pickup Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Ready for Pickup".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.pickupSubject} onChange={e => setEmailSettings({...emailSettings, pickupSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={6} value={emailSettings.pickupMessage} onChange={e => setEmailSettings({...emailSettings, pickupMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "delivered" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Delivered Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Delivered".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.deliveredSubject} onChange={e => setEmailSettings({...emailSettings, deliveredSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.deliveredMessage} onChange={e => setEmailSettings({...emailSettings, deliveredMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "completed" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Completed Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Completed".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.completedSubject} onChange={e => setEmailSettings({...emailSettings, completedSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.completedMessage} onChange={e => setEmailSettings({...emailSettings, completedMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* CÓDIGO RESTANTE DE ORDERS, PRICING, CATEGORIES, FOOTER Y USERS... */}
         {activeTab === "orders" && (
           <div className="animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -1063,10 +1338,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === "users" && (
+        {/* 🚀 AÑADIDO: Ocultamos el contenido de "users" si el rol no es 'admin' */}
+        {activeTab === "users" && profile.role === 'admin' && (
           <div className="animate-in fade-in duration-500">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Manage Users</h2>
+              
               <button onClick={() => setIsUserModalOpen(true)} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2"><UserPlus size={14} /> Add New User</button>
             </div>
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1085,12 +1362,27 @@ export default function AdminDashboard() {
                       </td>
                       <td className="p-6"><p className="text-xs font-bold text-gray-800">{u.email || "No email recorded"}</p></td>
                       <td className="p-6">
-                        <select value={u.role || 'customer'} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={u.id === adminUser.id} className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50 disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-500">
-                          <option value="customer">Customer</option><option value="admin">Admin</option>
+                        <select 
+                          value={u.role || 'customer'} 
+                          onChange={(e) => updateUserRole(u.id, e.target.value)} 
+                          disabled={u.id === adminUser.id} 
+                          className="text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg outline-none cursor-pointer border bg-white border-gray-300 text-black shadow-sm focus:border-black focus:ring-1 focus:ring-black transition-all hover:bg-gray-50 disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-500"
+                        >
+                          <option value="customer">Customer</option>
+                          <option value="editor">Editor</option>
+                          <option value="admin">Admin</option>
                         </select>
                       </td>
                       <td className="p-6"><p className="text-xs font-bold text-gray-600">{new Date(u.created_at).toLocaleDateString()}</p></td>
-                      <td className="p-6 text-right"><button onClick={() => deleteUser(u.id)} disabled={u.id === adminUser.id} className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"><Trash2 size={16} /></button></td>
+                      <td className="p-6 text-right">
+                        <button 
+                          onClick={() => deleteUser(u.id)} 
+                          disabled={u.id === adminUser.id} 
+                          className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1372,7 +1664,7 @@ export default function AdminDashboard() {
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Customer Name</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_name}</p></div>
                 <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Contact Email</p><p className="text-sm font-bold text-blue-900">{selectedOrder.customer_email}</p></div>
                 <div>
-                   <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Clover Trans. ID</p>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Stripe Trans. ID</p>
                    <p className="text-sm font-bold text-blue-900 truncate" title={selectedOrder.payment_id}>
                      {selectedOrder.payment_id || "PENDIENTE"}
                    </p>
@@ -1382,16 +1674,39 @@ export default function AdminDashboard() {
               <div>
                 <h4 className="text-sm font-black uppercase tracking-widest text-black mb-4 border-b border-gray-200 pb-2">Products ({selectedOrder.order_items?.length || 0})</h4>
                 <div className="space-y-4">
-                  {selectedOrder.order_items?.map((item: any) => {
-                    const productSlug = realSlugs[item.product_id] || item.slug || item.product_id;
+                  {selectedOrder.order_items?.map((item: any, index: number) => {
+                    const cleanId = extractCleanId(item.product_id);
+                    
+                    let rawStyle = item.style || item.sku || "";
+                    if (!rawStyle && item.product_name && item.product_name.includes(".")) {
+                      const titleParts = item.product_name.split(".");
+                      rawStyle = titleParts[titleParts.length - 1].trim();
+                    }
+                    const baseStyle = rawStyle ? (rawStyle.includes("-") ? rawStyle.split("-")[0] : rawStyle).trim().toUpperCase() : "";
+
+                    const dbSlug = realSlugs[cleanId] || (baseStyle ? realSlugs[`style_${baseStyle}`] : null);
+                    const dbImage = realImages[cleanId] || (baseStyle ? realImages[`style_${baseStyle}`] : null);
+                    
+                    let productSlug = dbSlug || item.slug || cleanId;
+                    if (productSlug.match(/^[0-9a-fA-F]{8}-/)) {
+                      productSlug = item.product_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+                    }
+
+                    let displayImage = dbImage || item.image_url || item.image;
+                    if (!displayImage || displayImage === "") {
+                      displayImage = baseStyle ? `https://cdnm.sanmar.com/catalog/images/${baseStyle}.jpg` : "/placeholder.png";
+                    }
+
                     return (
-                      <div key={item.id} className="p-4 border border-gray-300 rounded-2xl flex gap-6 items-start bg-gray-50 shadow-sm">
-                        {item.custom_logo_url ? (
-                          <div className="relative w-20 h-20 bg-white rounded-xl border border-gray-300 p-1 flex-shrink-0 group">
-                            <img src={item.custom_logo_url} alt="Logo" className="w-full h-full object-contain" />
-                            <a href={item.custom_logo_url} target="_blank" rel="noopener noreferrer" download={`logo-${item.product_id}`} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl" title="Download Logo"><Download size={20} className="text-white" /></a>
-                          </div>
-                        ) : (<div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center flex-shrink-0 text-[9px] font-black text-gray-500 uppercase border border-gray-300">No Logo</div>)}
+                      <div key={item.id} className="p-4 border border-gray-300 rounded-2xl flex flex-col sm:flex-row gap-6 items-start bg-gray-50 shadow-sm">
+                        <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-200 flex-shrink-0 shadow-sm">
+                          <img 
+                            src={displayImage} 
+                            alt={item.product_name} 
+                            className="w-full h-full object-contain mix-blend-multiply"
+                            onError={(e) => { e.currentTarget.src = "https://via.placeholder.com/150/f3f3f3/a3a3a3?text=N/A"; }}
+                          />
+                        </div>
                         <div className="flex-1">
                           <Link href={`/products/${productSlug}`} target="_blank" className="text-sm font-black text-black uppercase tracking-tight hover:text-blue-600 hover:underline transition-colors block w-fit">{item.product_name}</Link>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
@@ -1401,6 +1716,35 @@ export default function AdminDashboard() {
                             <div><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Locations:</span><p className="text-xs font-bold text-gray-900">{item.location}</p></div>
                           </div>
                         </div>
+
+                        {/* Logo section */}
+                        {item.custom_logo_url && (
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Uploaded Logo</span>
+                            <div className="relative w-16 h-16 bg-white rounded-xl border border-gray-300 p-1 flex-shrink-0 group">
+                              <img src={item.custom_logo_url} alt="Logo" className="w-full h-full object-contain" />
+                              
+                              {(() => {
+                                const ext = item.custom_logo_url.split('.').pop() || 'png';
+                                const safeName = (selectedOrder?.customer_name || "Customer").replace(/\s+/g, '');
+                                const orderId = selectedOrder?.id ? selectedOrder.id.split('-')[0] : "000";
+                                const customFileName = `${safeName}_Order${orderId}_Logo${index + 1}.${ext}`;
+                                const downloadUrl = `${item.custom_logo_url}?download=${customFileName}`;
+
+                                return (
+                                  <a 
+                                    href={downloadUrl} 
+                                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl" 
+                                    title="Download Logo"
+                                  >
+                                    <Download size={16} className="text-white" />
+                                  </a>
+                                );
+                              })()}
+                              
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1441,7 +1785,9 @@ export default function AdminDashboard() {
                  <div>
                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">User Role</label>
                    <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-widest text-black outline-none focus:border-black transition-colors cursor-pointer">
-                     <option value="customer">Customer</option><option value="admin">Admin</option>
+                     <option value="customer">Customer</option>
+                     <option value="editor">Editor</option>
+                     <option value="admin">Admin</option>
                    </select>
                  </div>
                </div>
@@ -1488,4 +1834,4 @@ export default function AdminDashboard() {
 
     </div>
   );
-}
+} 

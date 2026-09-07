@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { createClient } from '@supabase/supabase-js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Inicializamos Supabase para leer la configuración de correos
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(req: Request) {
   try {
@@ -18,17 +24,20 @@ export async function POST(req: Request) {
     let headline = '';
     let message = '';
 
+    // Consultamos la configuración desde la BD
+    const { data: settings } = await supabase.from('store_settings').select('*').eq('id', 'default').single();
+
     switch (status) {
       case 'shipped':
-        subject = `Your Order #${shortOrderId} is on its way! 🚚`;
         headline = 'Order Shipped';
-        message = `Great news! Your order <strong>#${shortOrderId}</strong> has been shipped and is currently on its way to you.`;
+        subject = settings?.email_shipped_subject || `Your Order #{orderId} is on its way! 🚚`;
+        message = settings?.email_shipped_message || `Great news! Your order <strong>#{orderId}</strong> has been shipped and is currently on its way to you.`;
         break;
       
       case 'ready_for_pickup':
-        subject = `Your Order #${shortOrderId} is Ready for Pickup! 📍`;
         headline = 'Ready for Pickup';
-        message = `Great news! Your custom items for order <strong>#${shortOrderId}</strong> are finished and ready for you to pick up.<br/><br/>
+        subject = settings?.email_pickup_subject || `Your Order #{orderId} is Ready for Pickup! 📍`;
+        message = settings?.email_pickup_message || `Great news! Your custom items for order <strong>#{orderId}</strong> are finished and ready for you to pick up.<br/><br/>
         Please visit our facility at your earliest convenience:<br/>
         <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 16px; border-radius: 8px; margin-top: 15px;">
           <h4 style="margin: 0 0 8px 0; color: #065f46; text-transform: uppercase; font-size: 14px; letter-spacing: 1px;">Fieldstone Embroidery</h4>
@@ -37,15 +46,15 @@ export async function POST(req: Request) {
         break;
 
       case 'delivered':
-        subject = `Your Order #${shortOrderId} has been delivered! 🎁`;
         headline = 'Order Delivered';
-        message = `Excellent news! Your order <strong>#${shortOrderId}</strong> has been successfully delivered. We hope you love your custom items!`;
+        subject = settings?.email_delivered_subject || `Your Order #{orderId} has been delivered! 🎁`;
+        message = settings?.email_delivered_message || `Excellent news! Your order <strong>#{orderId}</strong> has been successfully delivered. We hope you love your custom items!`;
         break;
 
       case 'completed':
-        subject = `Your Order #${shortOrderId} is complete! ✅`;
         headline = 'Order Completed';
-        message = `Your order <strong>#${shortOrderId}</strong> has been marked as completed. Thank you for trusting Fieldstone Embroidery for your custom apparel needs.`;
+        subject = settings?.email_completed_subject || `Your Order #{orderId} is complete! ✅`;
+        message = settings?.email_completed_message || `Your order <strong>#{orderId}</strong> has been marked as completed. Thank you for trusting Fieldstone Embroidery for your custom apparel needs.`;
         break;
 
       default:
@@ -53,6 +62,10 @@ export async function POST(req: Request) {
         headline = 'Order Update';
         message = `The status of your order <strong>#${shortOrderId}</strong> has been updated to: <span style="text-transform: uppercase; font-weight: bold; color: #3b5bdb;">${status}</span>.`;
     }
+
+    // 🚀 REEMPLAZO DE VARIABLES DINÁMICAS
+    subject = subject.replace(/{clientName}/g, clientName).replace(/{orderId}/g, shortOrderId);
+    message = message.replace(/{clientName}/g, clientName).replace(/{orderId}/g, shortOrderId);
 
     const trackingHtmlBlock = (trackingUrl && status !== 'ready_for_pickup') ? `
       <div style="margin: 35px 0; text-align: center;">
