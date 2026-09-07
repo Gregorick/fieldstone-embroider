@@ -12,10 +12,27 @@ import {
   MessageSquare, PanelBottom, MapPin, Mail
 } from "lucide-react";
 
+// 🚀 Helper para extraer el UUID limpio
 const extractCleanId = (idStr: string) => {
   if (!idStr) return "";
   const match = idStr.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
   return match ? match[0] : idStr;
+};
+
+// 🚀 Validador de contraseñas seguras
+const validatePassword = (password: string) => {
+  const errors = [];
+  if (password.length < 8) errors.push("At least 8 characters long");
+  if (!/[A-Z]/.test(password)) errors.push("One uppercase letter");
+  if (!/[a-z]/.test(password)) errors.push("One lowercase letter");
+  if (!/[0-9]/.test(password)) errors.push("One number");
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) errors.push("One special character");
+  
+  // Evitar secuencias numéricas (ej. 123, 456, 111, 222)
+  const hasSequentialOrRepeatedNumbers = /(012|123|234|345|456|567|678|789|890|000|111|222|333|444|555|666|777|888|999)/.test(password);
+  if (hasSequentialOrRepeatedNumbers) errors.push("No sequential or repeated numbers (e.g. 123 or 111)");
+
+  return errors;
 };
 
 const DEFAULT_TIERS = [
@@ -35,7 +52,11 @@ export default function AdminDashboard() {
   const [adminUser, setAdminUser] = useState<any>(null);
 
   const [profile, setProfile] = useState({ first_name: "", last_name: "", avatar_url: "", role: "" });
+  
+  // 🚀 Estados para la contraseña segura en el Perfil de Admin
   const [password, setPassword] = useState("");
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
+  
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,7 +86,6 @@ export default function AdminDashboard() {
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
 
-  // 🚀 ESTADO EXTENDIDO PARA WEBMAILS 
   const [activeEmailTab, setActiveEmailTab] = useState("customer_receipt");
   const [emailSettings, setEmailSettings] = useState({
     orderSubject: "¡Gracias por tu compra, {clientName}! Pedido #{orderId}",
@@ -246,6 +266,15 @@ export default function AdminDashboard() {
     setMounted(true);
     checkAdminAndLoadData();
   }, [checkAdminAndLoadData]);
+
+  // 🚀 Validar contraseña en vivo mientras el admin escribe
+  useEffect(() => {
+    if (password.length > 0) {
+      setPasswordErrors(validatePassword(password));
+    } else {
+      setPasswordErrors([]);
+    }
+  }, [password]);
 
   useEffect(() => {
     setCurrentFormPage(1);
@@ -623,10 +652,26 @@ export default function AdminDashboard() {
   };
 
   const updateAdminProfile = async () => {
+    if (password && passwordErrors.length > 0) {
+      alert("Please fix the password errors before saving.");
+      return;
+    }
+
     setLoading(true);
     await supabase.from("profiles").update({ first_name: profile.first_name, last_name: profile.last_name }).eq("id", adminUser.id);
-    if (password.trim() !== "") await supabase.auth.updateUser({ password });
-    alert("Profile saved!"); setLoading(false);
+    
+    if (password) {
+      const { error: authError } = await supabase.auth.updateUser({ password });
+      if (authError) {
+        alert(`Error updating password: ${authError.message}`);
+        setLoading(false);
+        return;
+      }
+      setPassword(""); // Limpiar input si fue exitoso
+    }
+
+    alert("Profile saved successfully!"); 
+    setLoading(false);
   };
   
   const handleLogout = async () => { await supabase.auth.signOut(); router.push("/"); };
@@ -783,186 +828,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🚀 PESTAÑA: WEBMAILS MEJORADA */}
-        {activeTab === "webmails" && (
-          <div className="animate-in fade-in duration-500 max-w-4xl">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Email Templates</h2>
-              <button onClick={saveSettings} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2">
-                <Save size={14} /> Save Templates
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200">
-              <button 
-                onClick={() => setActiveEmailTab("customer_receipt")} 
-                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "customer_receipt" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
-              >
-                Customer Receipt
-              </button>
-              <button 
-                onClick={() => setActiveEmailTab("admin_notify")} 
-                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "admin_notify" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
-              >
-                Admin Notice
-              </button>
-              <button 
-                onClick={() => setActiveEmailTab("shipped")} 
-                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "shipped" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
-              >
-                Shipped
-              </button>
-              <button 
-                onClick={() => setActiveEmailTab("pickup")} 
-                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "pickup" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
-              >
-                Pickup
-              </button>
-              <button 
-                onClick={() => setActiveEmailTab("delivered")} 
-                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "delivered" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
-              >
-                Delivered
-              </button>
-              <button 
-                onClick={() => setActiveEmailTab("completed")} 
-                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "completed" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
-              >
-                Completed
-              </button>
-            </div>
-
-            {/* CONTENIDO DE LAS PESTAÑAS */}
-            {activeEmailTab === "customer_receipt" && (
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
-                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Customer Receipt Email</h3>
-                <p className="text-xs font-medium text-gray-500 mb-6">Sent automatically to the customer when a payment is completed in Stripe.</p>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
-                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
-                    <input type="text" value={emailSettings.orderSubject} onChange={e => setEmailSettings({...emailSettings, orderSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
-                    <textarea rows={4} value={emailSettings.orderMessage} onChange={e => setEmailSettings({...emailSettings, orderMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeEmailTab === "admin_notify" && (
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
-                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Admin Notification Email</h3>
-                <p className="text-xs font-medium text-gray-500 mb-6">Sent automatically to the store administrators when a new order is paid.</p>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
-                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{totalToDisplay}"}</span></p>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
-                    <input type="text" value={emailSettings.adminSubject} onChange={e => setEmailSettings({...emailSettings, adminSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
-                    <textarea rows={4} value={emailSettings.adminMessage} onChange={e => setEmailSettings({...emailSettings, adminMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeEmailTab === "shipped" && (
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
-                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Order Shipped Email</h3>
-                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Shipped".</p>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
-                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
-                    <input type="text" value={emailSettings.shippedSubject} onChange={e => setEmailSettings({...emailSettings, shippedSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
-                    <textarea rows={4} value={emailSettings.shippedMessage} onChange={e => setEmailSettings({...emailSettings, shippedMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeEmailTab === "pickup" && (
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
-                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Ready for Pickup Email</h3>
-                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Ready for Pickup".</p>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
-                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
-                    <input type="text" value={emailSettings.pickupSubject} onChange={e => setEmailSettings({...emailSettings, pickupSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
-                    <textarea rows={6} value={emailSettings.pickupMessage} onChange={e => setEmailSettings({...emailSettings, pickupMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeEmailTab === "delivered" && (
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
-                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Delivered Email</h3>
-                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Delivered".</p>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
-                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
-                    <input type="text" value={emailSettings.deliveredSubject} onChange={e => setEmailSettings({...emailSettings, deliveredSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
-                    <textarea rows={4} value={emailSettings.deliveredMessage} onChange={e => setEmailSettings({...emailSettings, deliveredMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeEmailTab === "completed" && (
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
-                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Completed Email</h3>
-                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Completed".</p>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
-                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
-                    <input type="text" value={emailSettings.completedSubject} onChange={e => setEmailSettings({...emailSettings, completedSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
-                    <textarea rows={4} value={emailSettings.completedMessage} onChange={e => setEmailSettings({...emailSettings, completedMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-          </div>
-        )}
-
-        {/* CÓDIGO RESTANTE DE ORDERS, PRICING, CATEGORIES, FOOTER Y USERS... */}
         {activeTab === "orders" && (
           <div className="animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -1338,6 +1203,184 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 🚀 PESTAÑA WEBMAILS */}
+        {activeTab === "webmails" && (
+          <div className="animate-in fade-in duration-500 max-w-4xl">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Email Templates</h2>
+              <button onClick={saveSettings} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2">
+                <Save size={14} /> Save Templates
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200">
+              <button 
+                onClick={() => setActiveEmailTab("customer_receipt")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "customer_receipt" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Customer Receipt
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("admin_notify")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "admin_notify" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Admin Notice
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("shipped")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "shipped" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Shipped
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("pickup")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "pickup" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Pickup
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("delivered")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "delivered" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Delivered
+              </button>
+              <button 
+                onClick={() => setActiveEmailTab("completed")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeEmailTab === "completed" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Completed
+              </button>
+            </div>
+
+            {/* CONTENIDO DE LAS PESTAÑAS DE CORREO */}
+            {activeEmailTab === "customer_receipt" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Customer Receipt Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent automatically to the customer when a payment is completed in Stripe.</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.orderSubject} onChange={e => setEmailSettings({...emailSettings, orderSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.orderMessage} onChange={e => setEmailSettings({...emailSettings, orderMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "admin_notify" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Admin Notification Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent automatically to the store administrators when a new order is paid.</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{totalToDisplay}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.adminSubject} onChange={e => setEmailSettings({...emailSettings, adminSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.adminMessage} onChange={e => setEmailSettings({...emailSettings, adminMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "shipped" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Order Shipped Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Shipped".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.shippedSubject} onChange={e => setEmailSettings({...emailSettings, shippedSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.shippedMessage} onChange={e => setEmailSettings({...emailSettings, shippedMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "pickup" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Ready for Pickup Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Ready for Pickup".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.pickupSubject} onChange={e => setEmailSettings({...emailSettings, pickupSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={6} value={emailSettings.pickupMessage} onChange={e => setEmailSettings({...emailSettings, pickupMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "delivered" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Delivered Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Delivered".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.deliveredSubject} onChange={e => setEmailSettings({...emailSettings, deliveredSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.deliveredMessage} onChange={e => setEmailSettings({...emailSettings, deliveredMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeEmailTab === "completed" && (
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
+                <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Completed Email</h3>
+                <p className="text-xs font-medium text-gray-500 mb-6">Sent when an order status is changed to "Completed".</p>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">Available Variables:</p>
+                  <p className="text-xs font-medium text-blue-700">Use <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{clientName}"}</span> and <span className="font-mono bg-white px-1 rounded border border-blue-200">{"{orderId}"}</span></p>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Subject</label>
+                    <input type="text" value={emailSettings.completedSubject} onChange={e => setEmailSettings({...emailSettings, completedSubject: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Message (HTML supported)</label>
+                    <textarea rows={4} value={emailSettings.completedMessage} onChange={e => setEmailSettings({...emailSettings, completedMessage: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-black outline-none focus:border-blue-600 transition-colors shadow-sm" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 🚀 AÑADIDO: Ocultamos el contenido de "users" si el rol no es 'admin' */}
         {activeTab === "users" && profile.role === 'admin' && (
           <div className="animate-in fade-in duration-500">
@@ -1556,6 +1599,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 🚀 PESTAÑA: PERFIL ACTUALIZADA CON SEGURIDAD EN LA CONTRASEÑA */}
         {activeTab === "profile" && (
           <div className="animate-in fade-in duration-500 max-w-2xl">
             <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
@@ -1564,13 +1608,64 @@ export default function AdminDashboard() {
                 <div className="relative w-24 h-24"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-300">{profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : <User size={40} className="text-gray-400" />}</div><button onClick={() => avatarInputRef.current?.click()} disabled={isUploadingAvatar} className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:bg-gray-400">{isUploadingAvatar ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={14} />}</button><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} /></div>
                 <div><h3 className="text-lg font-black uppercase tracking-tight text-black">Profile Picture</h3><p className="text-xs font-medium text-gray-500 mt-1">Recommended size: 500x500px. Max 1MB.</p></div>
               </div>
+              
               <div className="grid grid-cols-2 gap-6">
                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">First Name</label><input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name</label><input type="text" value={profile.last_name} onChange={(e) => setProfile({...profile, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
                 <div className="col-span-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address</label><input type="email" disabled value={adminUser?.email} className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed"/></div>
-                <div className="col-span-2 pt-4"><h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2"><Lock size={14} /> Security</h4><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">New Password (leave blank to keep current)</label><input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
+                
+                <div className="col-span-2 pt-4 border-t border-gray-200 mt-4">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 block mb-4 flex items-center gap-2">
+                    <Lock size={14} /> Security Settings
+                  </h4>
+                  
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">
+                    New Password <span className="text-gray-400 font-normal lowercase">(Leave blank if you don't want to change it)</span>
+                  </label>
+                  
+                  <input 
+                    type="password" 
+                    placeholder="••••••••" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)} 
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"
+                  />
+
+                  {/* 🚀 Alerta de errores de contraseña en vivo */}
+                  {password.length > 0 && passwordErrors.length > 0 && (
+                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-red-800 mb-2 flex items-center gap-1">
+                        <AlertTriangle size={12} /> Password Requirements:
+                      </p>
+                      <ul className="list-disc pl-4 space-y-1">
+                        {passwordErrors.map((error, idx) => (
+                          <li key={idx} className="text-xs font-bold text-red-600">{error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* 🚀 Check de éxito */}
+                  {password.length > 0 && passwordErrors.length === 0 && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
+                      <Check size={16} className="text-green-600" />
+                      <p className="text-xs font-bold text-green-700">Strong password ready to save.</p>
+                    </div>
+                  )}
+
+                </div>
               </div>
-              <div className="pt-6"><button onClick={updateAdminProfile} className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl">Save Admin Profile</button></div>
+
+              <div className="pt-6">
+                <button 
+                  onClick={updateAdminProfile} 
+                  disabled={loading || (password.length > 0 && passwordErrors.length > 0)}
+                  className="w-full py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-xl"
+                >
+                  {loading ? "Saving..." : "Save Admin Profile"}
+                </button>
+              </div>
+
             </div>
           </div>
         )}
@@ -1780,18 +1875,39 @@ export default function AdminDashboard() {
                  <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Last Name *</label><input type="text" required value={newUser.last_name} onChange={e => setNewUser({...newUser, last_name: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
                </div>
                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address *</label><input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
-               <div className="grid grid-cols-2 gap-4">
-                 <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Password *</label><input type="password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
-                 <div>
-                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">User Role</label>
-                   <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-widest text-black outline-none focus:border-black transition-colors cursor-pointer">
-                     <option value="customer">Customer</option>
-                     <option value="editor">Editor</option>
-                     <option value="admin">Admin</option>
-                   </select>
+               
+               {/* 🚀 Validación de contraseña al crear un usuario nuevo desde el Admin */}
+               <div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Password *</label>
+                     <input type="password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/>
+                   </div>
+                   <div>
+                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">User Role</label>
+                     <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-widest text-black outline-none focus:border-black transition-colors cursor-pointer">
+                       <option value="customer">Customer</option>
+                       <option value="editor">Editor</option>
+                       <option value="admin">Admin</option>
+                     </select>
+                   </div>
                  </div>
+                 {newUser.password.length > 0 && validatePassword(newUser.password).length > 0 && (
+                   <ul className="list-disc pl-4 mt-2 space-y-1">
+                     {validatePassword(newUser.password).map((error, idx) => (
+                       <li key={idx} className="text-[10px] font-bold text-red-600">{error}</li>
+                     ))}
+                   </ul>
+                 )}
                </div>
-               <button type="submit" disabled={loading} className="w-full py-4 mt-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl disabled:opacity-50">{loading ? "Creating..." : "Save User"}</button>
+               
+               <button 
+                 type="submit" 
+                 disabled={loading || (newUser.password.length > 0 && validatePassword(newUser.password).length > 0)} 
+                 className="w-full py-4 mt-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl disabled:opacity-50"
+               >
+                 {loading ? "Creating..." : "Save User"}
+               </button>
             </form>
           </div>
         </div>
@@ -1834,4 +1950,4 @@ export default function AdminDashboard() {
 
     </div>
   );
-} 
+}

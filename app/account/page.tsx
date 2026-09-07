@@ -11,7 +11,7 @@ import {
   User, MapPin, Package, LogOut, Camera, Save, 
   Plus, Trash2, X, AlertTriangle, Star, Truck, 
   ChevronLeft, ChevronRight, Eye, Copy, Check,
-  RefreshCw 
+  RefreshCw, Lock
 } from "lucide-react";
 
 // 🚀 Helper para extraer el UUID limpio
@@ -19,6 +19,22 @@ const extractCleanId = (idStr: string) => {
   if (!idStr) return "";
   const match = idStr.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
   return match ? match[0] : idStr;
+};
+
+// 🚀 Validador de contraseñas seguras
+const validatePassword = (password: string) => {
+  const errors = [];
+  if (password.length < 8) errors.push("At least 8 characters long");
+  if (!/[A-Z]/.test(password)) errors.push("One uppercase letter");
+  if (!/[a-z]/.test(password)) errors.push("One lowercase letter");
+  if (!/[0-9]/.test(password)) errors.push("One number");
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) errors.push("One special character");
+  
+  // Evitar secuencias numéricas (ej. 123, 456, 111, 222)
+  const hasSequentialOrRepeatedNumbers = /(012|123|234|345|456|567|678|789|890|000|111|222|333|444|555|666|777|888|999)/.test(password);
+  if (hasSequentialOrRepeatedNumbers) errors.push("No sequential or repeated numbers (e.g. 123 or 111)");
+
+  return errors;
 };
 
 export default function AccountPage() {
@@ -36,6 +52,10 @@ export default function AccountPage() {
     last_name: "",
     avatar_url: ""
   });
+
+  // 🚀 Estado de la nueva contraseña
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
   // Estado para direcciones
   const [addresses, setAddresses] = useState<any[]>([]);
@@ -94,6 +114,15 @@ export default function AccountPage() {
     getInitialData();
   }, [router]);
 
+  // Validar contraseña en vivo mientras el usuario escribe
+  useEffect(() => {
+    if (newPassword.length > 0) {
+      setPasswordErrors(validatePassword(newPassword));
+    } else {
+      setPasswordErrors([]);
+    }
+  }, [newPassword]);
+
   const fetchAddresses = async (userId: string) => {
     const { data } = await supabase
       .from("addresses")
@@ -114,16 +143,14 @@ export default function AccountPage() {
       
     if (data) {
       const productIds = new Set<string>();
-      const stylesToFetch = new Set<string>(); // 🚀 NUEVO: Colección de estilos para cruzar con Supabase
+      const stylesToFetch = new Set<string>();
       
-      // 1. Extraemos IDs y Estilos de las órdenes
       data.forEach(order => {
         if (order.order_items) {
           order.order_items.forEach((item: any) => {
             if (item.product_id) {
               productIds.add(extractCleanId(item.product_id));
             }
-            // 🚀 Extraemos el estilo del nombre (Ej: "POLO. 203690" -> "203690") para buscarlo en Supabase
             let rawStyle = item.style || item.sku || "";
             if (!rawStyle && item.product_name && item.product_name.includes(".")) {
               const titleParts = item.product_name.split(".");
@@ -140,12 +167,11 @@ export default function AccountPage() {
       const newSlugs: Record<string, string> = {};
       const newImages: Record<string, string> = {}; 
 
-      // 🚀 2A. Consulta a Supabase por Estilo (Magia para órdenes viejas)
       if (stylesToFetch.size > 0) {
         const { data: stylesData } = await supabase
           .from('products_unique_styles')
           .select('style, slug, image_url')
-          .in('style', Array.from(stylesToFetch)); // BUSCAMOS POR COLUMNA 'STYLE'
+          .in('style', Array.from(stylesToFetch)); 
         
         if (stylesData) {
           stylesData.forEach(p => { 
@@ -157,7 +183,6 @@ export default function AccountPage() {
         }
       }
 
-      // 🚀 2B. Consulta a Supabase por ID (Para órdenes recientes)
       if (productIds.size > 0) {
         const idsArray = Array.from(productIds);
         
@@ -191,15 +216,39 @@ export default function AccountPage() {
   }, [orders, currentPage]);
 
   const updateProfile = async () => {
+    if (newPassword && passwordErrors.length > 0) {
+      alert("Please fix the password errors before saving.");
+      return;
+    }
+
     setLoading(true);
-    const { error } = await supabase.from("profiles").update({
+    
+    const { error: profileError } = await supabase.from("profiles").update({
       first_name: profile.first_name,
       last_name: profile.last_name,
       updated_at: new Date()
     }).eq("id", user.id);
 
-    if (error) alert(error.message);
-    else alert("Profile updated successfully!");
+    if (profileError) {
+      alert(profileError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword) {
+      const { error: authError } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (authError) {
+        alert(`Error updating password: ${authError.message}`);
+        setLoading(false);
+        return;
+      }
+      setNewPassword(""); 
+    }
+
+    alert("Profile updated successfully!");
     setLoading(false);
   };
 
@@ -325,14 +374,12 @@ export default function AccountPage() {
     }
   };
 
-  // 🚀 FUNCIÓN PARA VOLVER A ORDENAR
   const handleReorder = (order: any) => {
     if (!order.order_items || order.order_items.length === 0) return;
 
     order.order_items.forEach((item: any) => {
       const cleanId = extractCleanId(item.product_id);
       
-      // Mismo proceso de extracción de estilo que usamos en el render
       let rawStyle = item.style || item.sku || "";
       if (!rawStyle && item.product_name && item.product_name.includes(".")) {
         const titleParts = item.product_name.split(".");
@@ -340,7 +387,6 @@ export default function AccountPage() {
       }
       const baseStyle = rawStyle ? (rawStyle.includes("-") ? rawStyle.split("-")[0] : rawStyle).trim().toUpperCase() : "";
 
-      // Consultamos la variable extraída directamente a los mapas de Supabase
       const dbSlug = realSlugs[cleanId] || (baseStyle ? realSlugs[`style_${baseStyle}`] : null);
       const dbImage = realImages[cleanId] || (baseStyle ? realImages[`style_${baseStyle}`] : null);
 
@@ -443,11 +489,12 @@ export default function AccountPage() {
 
           <div className="flex-1 bg-white">
             
-            {/* PESTAÑA: PERFIL */}
+            {/* 🚀 PESTAÑA: PERFIL ACTUALIZADA CON CONTRASEÑA */}
             {activeTab === "profile" && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl">
                 <h3 className="text-3xl font-black uppercase tracking-tighter text-black italic mb-8">Personal Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">First Name</label>
                     <input type="text" value={profile.first_name} onChange={(e) => setProfile({...profile, first_name: e.target.value})} className="w-full text-black font-medium bg-white border border-gray-300 rounded-2xl px-6 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black transition-all shadow-sm"/>
@@ -461,7 +508,49 @@ export default function AccountPage() {
                     <input type="email" disabled value={user?.email} className="w-full bg-gray-100 border border-gray-200 rounded-2xl px-6 py-4 text-sm text-gray-500 outline-none cursor-not-allowed"/>
                   </div>
                 </div>
-                <button onClick={updateProfile} className="mt-8 flex items-center gap-3 px-10 py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-2xl">
+
+                <div className="border-t border-gray-200 pt-8 mb-8">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-800 flex items-center gap-2 mb-4">
+                    <Lock size={14} /> Security Settings
+                  </h4>
+                  
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">
+                    New Password <span className="text-gray-400 font-normal lowercase">(Leave blank if you don't want to change it)</span>
+                  </label>
+                  <input 
+                    type="password" 
+                    placeholder="••••••••" 
+                    value={newPassword} 
+                    onChange={(e) => setNewPassword(e.target.value)} 
+                    className="w-full bg-gray-50 border border-gray-300 rounded-2xl px-6 py-4 text-sm font-bold text-black outline-none focus:border-black transition-colors"
+                  />
+
+                  {newPassword.length > 0 && passwordErrors.length > 0 && (
+                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-red-800 mb-2 flex items-center gap-1">
+                        <AlertTriangle size={12} /> Password Requirements:
+                      </p>
+                      <ul className="list-disc pl-4 space-y-1">
+                        {passwordErrors.map((error, idx) => (
+                          <li key={idx} className="text-xs font-bold text-red-600">{error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {newPassword.length > 0 && passwordErrors.length === 0 && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
+                      <Check size={16} className="text-green-600" />
+                      <p className="text-xs font-bold text-green-700">Strong password ready to save.</p>
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={updateProfile} 
+                  disabled={loading || (newPassword.length > 0 && passwordErrors.length > 0)}
+                  className="flex items-center justify-center w-full sm:w-auto gap-3 px-10 py-4 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-2xl"
+                >
                   {loading ? "Saving..." : "Save Changes"} <Save size={16} />
                 </button>
               </div>
@@ -647,7 +736,6 @@ export default function AccountPage() {
                           {order.order_items && order.order_items.map((item: any) => {
                             const cleanId = extractCleanId(item.product_id);
                             
-                            // 🚀 Extracción robusta de estilo
                             let rawStyle = item.style || item.sku || "";
                             if (!rawStyle && item.product_name && item.product_name.includes(".")) {
                               const titleParts = item.product_name.split(".");
@@ -655,13 +743,11 @@ export default function AccountPage() {
                             }
                             const baseStyle = rawStyle ? (rawStyle.includes("-") ? rawStyle.split("-")[0] : rawStyle).trim().toUpperCase() : "";
 
-                            // 🚀 Mapeo de Supabase en vivo (Por ID o Por Estilo)
                             const dbSlug = realSlugs[cleanId] || (baseStyle ? realSlugs[`style_${baseStyle}`] : null);
                             const dbImage = realImages[cleanId] || (baseStyle ? realImages[`style_${baseStyle}`] : null);
                             
                             let productSlug = dbSlug || item.slug || cleanId;
                             
-                            // 🛡️ Regla de oro: NUNCA dejar que el slug sea un UUID
                             if (productSlug.match(/^[0-9a-fA-F]{8}-/)) {
                               productSlug = item.product_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
                             }

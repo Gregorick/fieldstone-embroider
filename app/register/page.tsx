@@ -6,7 +6,23 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { ArrowRight, AlertCircle, Check, X } from "lucide-react";
+import { ArrowRight, AlertCircle, Check, X, AlertTriangle } from "lucide-react";
+
+// 🚀 Validador unificado de contraseñas seguras
+const validatePassword = (password: string) => {
+  const errors = [];
+  if (password.length < 8) errors.push("At least 8 characters long");
+  if (!/[A-Z]/.test(password)) errors.push("One uppercase letter");
+  if (!/[a-z]/.test(password)) errors.push("One lowercase letter");
+  if (!/[0-9]/.test(password)) errors.push("One number");
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) errors.push("One special character");
+  
+  // Evitar secuencias numéricas (ej. 123, 456, 111, 222)
+  const hasSequentialOrRepeatedNumbers = /(012|123|234|345|456|567|678|789|890|000|111|222|333|444|555|666|777|888|999)/.test(password);
+  if (hasSequentialOrRepeatedNumbers) errors.push("No sequential or repeated numbers (e.g. 123 or 111)");
+
+  return errors;
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,27 +39,19 @@ export default function RegisterPage() {
   // 1. ESTADO DEL HONEYPOT (Anti-Spam)
   const [honeypot, setHoneypot] = useState("");
 
-  // 2. ESTADO DE VALIDACIÓN DE CONTRASEÑA
-  const [passwordCriteria, setPasswordCriteria] = useState({
-    length: false,
-    uppercase: false,
-    lowercase: false,
-    number: false,
-    special: false,
-  });
+  // 2. ESTADO DE ERRORES DE CONTRASEÑA EN TIEMPO REAL
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
   // Función para validar la contraseña en tiempo real
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setFormData({ ...formData, password: val });
     
-    setPasswordCriteria({
-      length: val.length >= 8,
-      uppercase: /[A-Z]/.test(val),
-      lowercase: /[a-z]/.test(val),
-      number: /[0-9]/.test(val),
-      special: /[^A-Za-z0-9]/.test(val),
-    });
+    if (val.length > 0) {
+      setPasswordErrors(validatePassword(val));
+    } else {
+      setPasswordErrors([]);
+    }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -58,9 +66,9 @@ export default function RegisterPage() {
       return; 
     }
 
-    // VALIDACIÓN DE CONTRASEÑA
-    const isPasswordValid = Object.values(passwordCriteria).every(Boolean);
-    if (!isPasswordValid) {
+    // VALIDACIÓN DE CONTRASEÑA ESTRICTA
+    const currentErrors = validatePassword(formData.password);
+    if (currentErrors.length > 0) {
       setError("Please ensure your password meets all the security requirements.");
       setLoading(false);
       return;
@@ -154,34 +162,36 @@ export default function RegisterPage() {
             <div>
               <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Password</label>
               <input 
-                type="password" required
+                type="password" required placeholder="••••••••"
                 value={formData.password} onChange={handlePasswordChange}
                 className="w-full bg-gray-50 border border-gray-300 text-black font-medium placeholder-gray-500 rounded-xl px-4 py-4 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black focus:bg-white transition-colors"
               />
               
-              {/* INDICADORES DE SEGURIDAD DE CONTRASEÑA */}
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${passwordCriteria.length ? 'text-green-600' : 'text-gray-400'}`}>
-                  {passwordCriteria.length ? <Check size={12} strokeWidth={3}/> : <X size={12} strokeWidth={3}/>} 8+ Characters
+              {/* INDICADORES DE ERRORES DE CONTRASEÑA EN TIEMPO REAL */}
+              {formData.password.length > 0 && passwordErrors.length > 0 && (
+                <div className="mt-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-red-800 mb-2 flex items-center gap-1">
+                    <AlertTriangle size={12} /> Password Requirements:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    {passwordErrors.map((errText, idx) => (
+                      <li key={idx} className="text-xs font-bold text-red-600">{errText}</li>
+                    ))}
+                  </ul>
                 </div>
-                <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${passwordCriteria.uppercase ? 'text-green-600' : 'text-gray-400'}`}>
-                  {passwordCriteria.uppercase ? <Check size={12} strokeWidth={3}/> : <X size={12} strokeWidth={3}/>} 1 Uppercase
+              )}
+
+              {formData.password.length > 0 && passwordErrors.length === 0 && (
+                <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
+                  <Check size={16} className="text-green-600" />
+                  <p className="text-xs font-bold text-green-700">Strong password ready to use.</p>
                 </div>
-                <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${passwordCriteria.lowercase ? 'text-green-600' : 'text-gray-400'}`}>
-                  {passwordCriteria.lowercase ? <Check size={12} strokeWidth={3}/> : <X size={12} strokeWidth={3}/>} 1 Lowercase
-                </div>
-                <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${passwordCriteria.number ? 'text-green-600' : 'text-gray-400'}`}>
-                  {passwordCriteria.number ? <Check size={12} strokeWidth={3}/> : <X size={12} strokeWidth={3}/>} 1 Number
-                </div>
-                <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider col-span-1 sm:col-span-2 ${passwordCriteria.special ? 'text-green-600' : 'text-gray-400'}`}>
-                  {passwordCriteria.special ? <Check size={12} strokeWidth={3}/> : <X size={12} strokeWidth={3}/>} 1 Special Character (@$!%*?&)
-                </div>
-              </div>
+              )}
             </div>
 
             <button 
-              type="submit" disabled={loading}
-              className="w-full h-14 mt-6 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl flex items-center justify-center gap-3 disabled:opacity-50"
+              type="submit" disabled={loading || (formData.password.length > 0 && passwordErrors.length > 0)}
+              className="w-full h-14 mt-6 bg-black text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-blue-600 transition-colors shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <>Create Account <ArrowRight size={14} /></>}
             </button>
