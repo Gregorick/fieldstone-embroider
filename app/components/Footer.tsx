@@ -2,12 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Mail, ChevronUp, AlertCircle, X } from "lucide-react";
+import { Mail, ChevronUp, AlertCircle, X, Phone } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 // --- COMPONENTES SVG PARA REDES SOCIALES ---
 const FacebookIcon = () => ( <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg> );
-const TwitterIcon = () => ( <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg> );
 const InstagramIcon = () => ( <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg> );
 const LinkedinIcon = () => ( <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg> );
 
@@ -19,8 +18,8 @@ export default function Footer() {
     companyName: "Fieldstone Embroidery Store",
     address: "Santo Domingo, Distrito Nacional\nDominican Republic",
     email: "dmarra@fieldstoneembroidery.com",
+    phone: "978.219.9071", 
     facebookUrl: "#",
-    twitterUrl: "#",
     instagramUrl: "#",
     linkedinUrl: "#"
   });
@@ -33,8 +32,8 @@ export default function Footer() {
           companyName: data.footer_company_name || "Fieldstone Embroidery Store",
           address: data.footer_address || "Santo Domingo, Distrito Nacional\nDominican Republic",
           email: data.footer_email || "dmarra@fieldstoneembroidery.com",
+          phone: data.footer_phone || "978.219.9071", 
           facebookUrl: data.footer_facebook_url || "#",
-          twitterUrl: data.footer_twitter_url || "#",
           instagramUrl: data.footer_instagram_url || "#",
           linkedinUrl: data.footer_linkedin_url || "#"
         });
@@ -45,7 +44,6 @@ export default function Footer() {
 
   const socialLinks = [
     { Icon: FacebookIcon, href: contactInfo.facebookUrl },
-    { Icon: TwitterIcon, href: contactInfo.twitterUrl },
     { Icon: InstagramIcon, href: contactInfo.instagramUrl },
     { Icon: LinkedinIcon, href: contactInfo.linkedinUrl },
   ];
@@ -58,22 +56,18 @@ export default function Footer() {
     { name: "Bags", href: "/products?category=Bags" },
   ];
 
-  // --- LÓGICA NEWSLETTER ---
-  const [email, setEmail] = useState("");
+  const [emailState, setEmailState] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [honeypot, setHoneypot] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'success'|'error' } | null>(null);
   
-  // Nuevo estado para el popup de confirmación
   const [showAuthPopup, setShowAuthPopup] = useState(false);
 
-  // Primera fase: Cuando el usuario le da a Subscribe en el form principal
   const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
-    // Evitar falsos envíos
     if (honeypot.length > 0) {
       setMessage({ text: "Thanks for subscribing!", type: 'success' });
       return;
@@ -84,21 +78,18 @@ export default function Footer() {
       return;
     }
 
-    if (!email) return;
+    if (!emailState) return;
 
-    // Si todo está bien, mostrar el Popup
     setShowAuthPopup(true);
   };
 
-  // Segunda fase: Confirmación final enviada a Supabase
   const processSubscription = async (isAuthorized: boolean) => {
     setLoading(true);
     setShowAuthPopup(false);
 
     try {
-      // 🟢 ASEGÚRATE DE TENER LA COLUMNA 'authorized' (BOOLEAN) EN TU TABLA newsletter_subscriptions
       const { error } = await supabase.from("newsletter_subscriptions").insert([{ 
-        email, 
+        email: emailState, 
         authorized: isAuthorized 
       }]);
 
@@ -108,7 +99,7 @@ export default function Footer() {
       }
       
       setMessage({ text: "Thanks for subscribing!", type: 'success' });
-      setEmail("");
+      setEmailState("");
       setTermsAccepted(false);
     } catch (err: any) {
       setMessage({ text: err.message || "Something went wrong.", type: 'error' });
@@ -127,8 +118,20 @@ export default function Footer() {
             <div className="text-gray-400 text-xs leading-6 space-y-4 font-medium">
               <p className="text-white font-black tracking-tight text-sm">{contactInfo.companyName}</p>
               <p className="whitespace-pre-line">{contactInfo.address}</p>
-              <p className="text-white font-bold"><a href={`mailto:${contactInfo.email}`}>{contactInfo.email}</a></p>
+              
+              {/* 🚀 FIX: AÑADIDO FLEX-START, MT Y BREAK-ALL PARA EVITAR QUE SE ROMPA EL DISEÑO */}
+              <div className="space-y-2 pt-2">
+                <p className="text-white font-bold flex items-start gap-2">
+                  <Mail size={14} className="text-gray-500 flex-shrink-0 mt-1" />
+                  <a href={`mailto:${contactInfo.email}`} className="hover:text-blue-500 transition-colors break-all">{contactInfo.email}</a>
+                </p>
+                <p className="text-white font-bold flex items-center gap-2">
+                  <Phone size={14} className="text-gray-500 flex-shrink-0" />
+                  <a href={`tel:${contactInfo.phone.replace(/[^0-9+]/g, '')}`} className="hover:text-blue-500 transition-colors">{contactInfo.phone}</a>
+                </p>
+              </div>
             </div>
+            
             <div className="flex gap-3 pt-4">
               {socialLinks.map((social, i) => (
                 <Link key={i} href={social.href} className="w-10 h-10 rounded-full border border-gray-800 flex items-center justify-center hover:bg-white hover:text-black hover:border-white transition-all duration-300"><social.Icon /></Link>
@@ -162,13 +165,12 @@ export default function Footer() {
             <p className="text-gray-400 text-xs mb-6 leading-relaxed font-medium">Subscribe to receive inspiration, ideas & news in your inbox.</p>
             
             <form className="space-y-4" onSubmit={handleInitialSubmit}>
-              {/* HONEYPOT */}
               <div className="opacity-0 absolute -z-10 w-0 h-0 overflow-hidden" aria-hidden="true">
                 <input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} />
               </div>
 
               <div className="relative">
-                <input type="email" required placeholder="Your email address" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 text-xs focus:outline-none focus:border-blue-600 transition-all pr-12 text-white font-medium" />
+                <input type="email" required placeholder="Your email address" value={emailState} onChange={e => setEmailState(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 text-xs focus:outline-none focus:border-blue-600 transition-all pr-12 text-white font-medium" />
                 <Mail className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
               </div>
               <button type="submit" disabled={loading} className="w-full bg-white hover:bg-blue-600 text-black hover:text-white font-black uppercase text-[10px] py-4 tracking-[0.3em] transition-all duration-300 disabled:opacity-50">
@@ -198,7 +200,6 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* POPUP DE AUTORIZACIÓN PARA NEWSLETTER */}
       {showAuthPopup && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">

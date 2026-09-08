@@ -82,9 +82,6 @@ export default function ContactUs() {
           <h2 className="text-3xl md:text-4xl font-black uppercase tracking-widest text-center text-black mb-4">
             Contact Us
           </h2>
-          <p className="text-center text-sm font-medium text-gray-600 mb-8">
-            Call us at <a href="tel:9782199071" className="text-[#5C92D1] hover:underline">978.219.9071</a> or use the form below:
-          </p>
 
           {success && (
             <div className="mb-6 p-4 bg-green-50 text-green-700 text-xs font-bold uppercase tracking-wide border border-green-200 text-center">

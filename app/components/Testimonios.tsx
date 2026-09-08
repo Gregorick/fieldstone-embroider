@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link"; // Aseguramos que Link esté importado
 
 export default function Testimonios() {
   const [testimonials, setTestimonials] = useState<any[]>([]);
@@ -39,8 +40,12 @@ export default function Testimonios() {
           const processedReviews = data.reviews
             // 1. FILTRO: Solo mejores valorados (4 o 5 estrellas) con texto
             .filter((rev: any) => rev.rating >= 4 && rev.text && rev.text.trim().length > 0)
-            // 2. ORDEN: Siempre los últimos de primero (por fecha/tiempo de Google)
-            .sort((a: any, b: any) => b.time - a.time);
+            // 2. 🚀 ORDEN ESTRICTO: De más nuevo a más viejo basándose en Unix Timestamp
+            .sort((a: any, b: any) => {
+              const timeA = Number(a.time) || 0;
+              const timeB = Number(b.time) || 0;
+              return timeB - timeA;
+            });
             
           setTestimonials(processedReviews);
         } else {
@@ -109,29 +114,57 @@ export default function Testimonios() {
                     <div className="absolute -bottom-5 left-10 w-0 h-0 border-l-[15px] border-l-transparent border-t-[20px] border-t-gray-50 border-r-[15px] border-r-transparent drop-shadow-sm"></div>
                   </div>
 
-                  {/* Avatar y Nombre */}
-                  <div className="flex items-center gap-4 px-6">
-                    <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-gray-100 shadow-sm bg-white p-1">
-                      <img 
-                        src={testimonial.profile_photo_url || defaultAvatar} 
-                        alt={testimonial.author_name}
-                        className="w-full h-full object-cover rounded-full"
-                        onError={(e) => { 
-                          e.currentTarget.onerror = null; 
-                          e.currentTarget.src = defaultAvatar;
-                        }}
-                      />
+                  {/* 🚀 Avatar y Nombre CLICKEABLES */}
+                  {testimonial.author_url ? (
+                    <a 
+                      href={testimonial.author_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="flex items-center gap-4 px-6 group cursor-pointer"
+                    >
+                      <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-gray-100 shadow-sm bg-white p-1 group-hover:border-[#8012d8] transition-colors">
+                        <img 
+                          src={testimonial.profile_photo_url || defaultAvatar} 
+                          alt={testimonial.author_name}
+                          className="w-full h-full object-cover rounded-full"
+                          onError={(e) => { 
+                            e.currentTarget.onerror = null; 
+                            e.currentTarget.src = defaultAvatar;
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <h4 className="text-black font-black text-lg tracking-tight line-clamp-1 group-hover:text-[#8012d8] transition-colors">
+                          {testimonial.author_name}
+                        </h4>
+                        <p className="text-[#8012d8] text-sm italic font-medium">
+                          Google Review
+                        </p>
+                      </div>
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-4 px-6">
+                      <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-gray-100 shadow-sm bg-white p-1">
+                        <img 
+                          src={testimonial.profile_photo_url || defaultAvatar} 
+                          alt={testimonial.author_name}
+                          className="w-full h-full object-cover rounded-full"
+                          onError={(e) => { 
+                            e.currentTarget.onerror = null; 
+                            e.currentTarget.src = defaultAvatar;
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <h4 className="text-black font-black text-lg tracking-tight line-clamp-1">
+                          {testimonial.author_name}
+                        </h4>
+                        <p className="text-[#8012d8] text-sm italic font-medium">
+                          Google Review
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-black font-black text-lg tracking-tight line-clamp-1">
-                        {testimonial.author_name}
-                      </h4>
-                      {/* Solo muestra "Google Review", sin fechas ni tiempos */}
-                      <p className="text-[#8012d8] text-sm italic font-medium">
-                        Google Review
-                      </p>
-                    </div>
-                  </div>
+                  )}
 
                 </div>
               ))}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link"; // 🚀 ¡ESTO ERA LO QUE FALTABA!
 import { supabase } from "@/lib/supabase";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
@@ -30,8 +31,6 @@ export default function UpdatePasswordPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 🚀 Supabase envía los datos de recuperación en el Hash de la URL (#access_token=...)
-    // Necesitamos capturarlos y establecer la sesión explícitamente.
     const handleRecoverySession = async () => {
       try {
         const hash = window.location.hash;
@@ -49,7 +48,6 @@ export default function UpdatePasswordPage() {
           }
         }
 
-        // Verificamos si ya hay una sesión activa válida
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           setError("El enlace de recuperación es inválido o ha expirado. Por favor, solicita uno nuevo.");
@@ -142,8 +140,8 @@ export default function UpdatePasswordPage() {
                     <AlertTriangle size={12} /> Password Requirements:
                   </p>
                   <ul className="list-disc pl-4 space-y-1">
-                    {passwordErrors.map((error, idx) => (
-                      <li key={idx} className="text-xs font-bold text-red-600">{error}</li>
+                    {passwordErrors.map((errorText, idx) => (
+                      <li key={idx} className="text-xs font-bold text-red-600">{errorText}</li>
                     ))}
                   </ul>
                 </div>

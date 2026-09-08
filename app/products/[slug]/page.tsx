@@ -165,9 +165,18 @@ function ProductPageContent() {
     async function fetchProductAndSettings() {
       const { data: settings } = await supabase.from("store_settings").select("*").eq("id", "default").single();
       if (settings) {
-        if (settings.decoration_tiers) setDecorationTiers(settings.decoration_tiers);
-        if (settings.small_order_fee_threshold) setFeeThreshold(settings.small_order_fee_threshold);
-        if (settings.small_order_fee_amount) setFeeAmount(settings.small_order_fee_amount);
+        if (settings.decoration_tiers && Array.isArray(settings.decoration_tiers)) {
+          const parsedTiers = settings.decoration_tiers.map((t: any) => ({
+            min: Number(t.min),
+            max: Number(t.max),
+            emb: Number(t.emb),
+            sp: Number(t.sp),
+            shipping: Number(t.shipping) || 40
+          }));
+          setDecorationTiers(parsedTiers);
+        }
+        if (settings.small_order_fee_threshold) setFeeThreshold(Number(settings.small_order_fee_threshold));
+        if (settings.small_order_fee_amount) setFeeAmount(Number(settings.small_order_fee_amount));
       }
 
       const { data: productData } = await supabase
@@ -239,7 +248,8 @@ function ProductPageContent() {
     }
 
     if (slug) fetchProductAndSettings();
-  }, [slug, searchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
 
   useEffect(() => {
     if (variants.length > 0 && selectedColor) {
@@ -254,7 +264,7 @@ function ProductPageContent() {
       ]).filter(Boolean))) as string[];
 
       setGallery(colorImages.slice(0, 8));
-      if (colorImages.length > 0) setMainImage(colorImages[0]);
+      if (colorImages.length > 0) setMainImage(colorImages[0]); 
 
       const exactVariant = variantsOfColor.find(v => v.size === selectedSize) || variantsOfColor[0];
       
@@ -296,7 +306,6 @@ function ProductPageContent() {
     }
   };
 
-  // 🚀 BÚSQUEDA BLINDADA POR ID (UNIQUE_KEY === PART_ID)
   const exactVariant = variants.find(
     v => v.color_name === selectedColor && v.size === selectedSize
   );
@@ -306,7 +315,6 @@ function ProductPageContent() {
     return item.sku === String(exactVariant.unique_key || exactVariant.sku);
   });
 
-  // 🛡️ Si no hay datos comprobados en la API, asignamos 0 (Out of Stock) en lugar de un valor ciego
   const stockQty = currentVariantStock ? currentVariantStock.qty : (liveInventory.length > 0 ? 0 : null);
 
   let availableLocations: string[] = [];
@@ -330,13 +338,22 @@ function ProductPageContent() {
   }
 
   const numericQuantity = Number(quantity) || 1;
+  
   const currentTier = decorationTiers.find(t => numericQuantity >= Number(t.min) && numericQuantity <= Number(t.max)) || decorationTiers[decorationTiers.length - 1];
-  const addedPrice = decorationMethod ? currentTier[decorationMethod as "emb" | "sp"] : 0;
+  
+  let addedPrice = 0;
+  if (decorationMethod === "emb") {
+    addedPrice = Number(currentTier.emb) || 0;
+  } else if (decorationMethod === "sp") {
+    addedPrice = Number(currentTier.sp) || 0;
+  }
+
   const unitPrice = basePrice + addedPrice;
   const totalSubtotal = unitPrice * numericQuantity;
-  const isQuote = numericQuantity >= 500;
+  
+  const isMultipleLocations = location2 !== "" || location3 !== "";
+  const isQuote = numericQuantity >= 500 || isMultipleLocations;
 
-  // 🚀 Comprobación estricta de exceso de stock
   const exceedsStock = !isQuote && stockQty !== null && numericQuantity > stockQty;
 
   const handleActionClick = () => {
@@ -363,7 +380,6 @@ function ProductPageContent() {
     
     const combinedLocations = [location1, location2, location3].filter(Boolean).join(" + ");
 
-    // 🔑 AQUÍ MANDAMOS EL STYLE Y EL UNIQUE_KEY CORRECTAMENTE AL CARRITO CON "as any"
     addToCart({
       id: `${product.id}-${selectedColor}-${selectedSize}-${decorationMethod}-${location1}`,
       productId: product.id,
@@ -501,21 +517,58 @@ function ProductPageContent() {
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Color: <span className="text-black">{selectedColor}</span></label>
               </div>
               <div className="flex flex-wrap gap-3">
-                {availableColorObjects.map(color => (
-                  <button
-                    key={color.name} 
-                    onClick={() => {
-                      setSelectedColor(color.name);
-                      updateURL("color", color.name);
-                    }} 
-                    title={color.name}
-                    className={`w-[4.5rem] h-20 rounded-xl overflow-hidden border-2 transition-all p-1 bg-gray-50 ${selectedColor === color.name ? 'border-blue-600 ring-2 ring-blue-100 shadow-md' : 'border-gray-200 hover:border-gray-400'}`}
-                  >
-                    <div className="w-full h-full relative rounded-lg overflow-hidden bg-white">
-                      <img src={color.image} alt={color.name} onError={(e) => { e.currentTarget.style.display = 'none'; }} className="w-full h-full object-cover" />
-                    </div>
-                  </button>
-                ))}
+                {availableColorObjects.map(color => {
+                  // 🚀 MAGIA VISUAL: Verificamos si este color está out of stock para la talla actual
+                  const variantToCheck = variants.find(v => v.color_name === color.name && v.size === selectedSize);
+                  let isColorOutOfStock = false;
+                  if (variantToCheck && liveInventory.length > 0) {
+                    const invData = liveInventory.find((item: any) => item.sku === String(variantToCheck.unique_key || variantToCheck.sku));
+                    isColorOutOfStock = invData ? invData.qty <= 0 : true;
+                  }
+
+                  const isSelected = selectedColor === color.name;
+                  
+                  // Generamos las clases basadas en selección y disponibilidad
+                  let buttonClass = `w-[4.5rem] h-20 rounded-xl overflow-hidden border-2 transition-all p-1 bg-gray-50 relative cursor-pointer `;
+                  if (isSelected) {
+                    buttonClass += isColorOutOfStock 
+                      ? 'border-red-600 ring-2 ring-red-100 shadow-md' 
+                      : 'border-blue-600 ring-2 ring-blue-100 shadow-md';
+                  } else {
+                    buttonClass += isColorOutOfStock 
+                      ? 'border-red-300 hover:border-red-600 opacity-60' 
+                      : 'border-gray-200 hover:border-gray-400';
+                  }
+
+                  return (
+                    <button
+                      key={color.name} 
+                      onClick={() => {
+                        setSelectedColor(color.name);
+                        updateURL("color", color.name);
+                      }} 
+                      title={isColorOutOfStock ? `${color.name} (Out of Stock)` : color.name}
+                      className={buttonClass}
+                    >
+                      <div className="w-full h-full relative rounded-lg overflow-hidden bg-white">
+                        <img 
+                          src={color.image} 
+                          alt={color.name} 
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+                          className={`w-full h-full object-cover transition-opacity ${isColorOutOfStock && !isSelected ? 'opacity-40 grayscale-[50%]' : ''}`} 
+                        />
+                        {/* Pequeña X si está agotado */}
+                        {isColorOutOfStock && (
+                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="bg-red-600/90 text-white rounded-full p-0.5 shadow-sm">
+                                <X size={12} strokeWidth={4} />
+                              </div>
+                           </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -525,21 +578,51 @@ function ProductPageContent() {
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Size: <span className="text-black">{selectedSize}</span></label>
               </div>
               <div className="flex flex-wrap gap-2 mb-4">
-                {availableSizes.map(size => (
-                  <button
-                    key={size} 
-                    onClick={() => {
-                      setSelectedSize(size);
-                      updateURL("size", size);
-                    }}
-                    className={`min-w-[3rem] h-12 px-3 flex items-center justify-center border-2 text-[11px] font-black rounded-xl transition-all ${selectedSize === size ? 'border-black bg-black text-white shadow-md' : 'border-gray-100 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
-                  >
-                    {size}
-                  </button>
-                ))}
+                {availableSizes.map(size => {
+                  // 🚀 MAGIA VISUAL: Verificamos si esta talla está out of stock para el color actual
+                  const sizeVariant = variants.find(v => v.color_name === selectedColor && v.size === size);
+                  let isSizeOutOfStock = false;
+                  if (sizeVariant && liveInventory.length > 0) {
+                    const invData = liveInventory.find((item: any) => item.sku === String(sizeVariant.unique_key || sizeVariant.sku));
+                    isSizeOutOfStock = invData ? invData.qty <= 0 : true;
+                  }
+
+                  const isSelected = selectedSize === size;
+                  
+                  let sizeBtnClass = `min-w-[3rem] h-12 px-3 flex items-center justify-center border-2 text-[11px] font-black rounded-xl transition-all relative `;
+                  if (isSelected) {
+                    sizeBtnClass += isSizeOutOfStock 
+                      ? 'border-red-600 bg-red-600 text-white shadow-md' 
+                      : 'border-black bg-black text-white shadow-md';
+                  } else {
+                    sizeBtnClass += isSizeOutOfStock 
+                      ? 'border-red-200 text-red-600 hover:border-red-500 bg-red-50/50' 
+                      : 'border-gray-100 text-gray-600 hover:border-gray-300 hover:bg-gray-50';
+                  }
+
+                  return (
+                    <button
+                      key={size} 
+                      onClick={() => {
+                        setSelectedSize(size);
+                        updateURL("size", size);
+                      }}
+                      className={sizeBtnClass}
+                      title={isSizeOutOfStock ? `${size} (Out of Stock)` : size}
+                    >
+                      {size}
+                      {/* Tachado si está agotado y no seleccionado */}
+                      {isSizeOutOfStock && !isSelected && (
+                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-50">
+                           <div className="w-full h-[2px] bg-red-500 -rotate-12 absolute scale-110"></div>
+                         </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* 🚀 INDICADOR ESTRICTO: OUT OF STOCK SI NO HAY UNIDADES */}
+              {/* INDICADOR ESTRICTO: OUT OF STOCK SI NO HAY UNIDADES */}
               <div className="mt-2">
                 {stockQty === 0 || stockQty === null ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 text-[11px] font-black rounded-xl uppercase tracking-wider border border-red-200">
@@ -674,7 +757,9 @@ function ProductPageContent() {
 
                     {location1 && (decorationMethod === "emb" || decorationMethod === "sp") && availableLocations.length > 1 && (
                       <div className="w-full mt-4 text-left animate-in fade-in slide-in-from-top-2 duration-300">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Second Logo Location (Optional)</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">
+                          Second Logo Location <span className="text-[#8012d8] lowercase">(Requires custom quote)</span>
+                        </label>
                         <div className="relative">
                           <select 
                             value={location2} 
@@ -694,7 +779,9 @@ function ProductPageContent() {
 
                     {location2 && decorationMethod === "sp" && availableLocations.length > 2 && (
                       <div className="w-full mt-4 text-left animate-in fade-in slide-in-from-top-2 duration-300">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Third Logo Location (Optional)</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">
+                          Third Logo Location <span className="text-[#8012d8] lowercase">(Requires custom quote)</span>
+                        </label>
                         <div className="relative">
                           <select 
                             value={location3} 
@@ -709,6 +796,17 @@ function ProductPageContent() {
                       </div>
                     )}
 
+                    {/* 🚀 ALERTA INFORMATIVA SI HAY MULTIPLES LOCACIONES */}
+                    {isMultipleLocations && (
+                      <div className="w-full mt-4 p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-start gap-3 animate-in fade-in">
+                        <Info size={20} className="text-[#8012d8] flex-shrink-0 mt-0.5" />
+                        <p className="text-[11px] font-bold text-purple-900 leading-relaxed uppercase tracking-wide">
+                          Multiple decoration locations selected. <br/>
+                          <span className="font-black text-[#8012d8] block mt-1">This requires a custom pricing quote. Proceed below to submit your request.</span>
+                        </p>
+                      </div>
+                    )}
+
                     <div className="w-full mt-4 text-left">
                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Extra Instructions / Comments (Optional)</label>
                       <textarea value={extraComments} onChange={(e) => setExtraComments(e.target.value)} placeholder="E.g., Please center the logo on the left chest..." className="w-full p-4 text-sm text-black bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all resize-none h-24 custom-scrollbar" />
@@ -718,7 +816,7 @@ function ProductPageContent() {
               </div>
             )}
 
-            {totalSubtotal < feeThreshold && numericQuantity < 500 && (
+            {totalSubtotal < feeThreshold && numericQuantity < 500 && !isMultipleLocations && (
               <div className="mb-10 p-5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
                 <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-[11px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
@@ -762,7 +860,7 @@ function ProductPageContent() {
                     stockQty === 0 || stockQty === null || exceedsStock 
                       ? "bg-gray-200 text-gray-400 cursor-not-allowed" 
                       : isQuote 
-                      ? "bg-white border-2 border-black text-black hover:bg-black hover:text-white" 
+                      ? "bg-white border-2 border-[#8012d8] text-[#8012d8] hover:bg-[#8012d8] hover:text-white" 
                       : "bg-black text-white hover:bg-[#8012d8]"
                   }`}
                 >
@@ -798,7 +896,7 @@ function ProductPageContent() {
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => !isSubmittingQuote && setIsQuoteModalOpen(false)}>
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-              <h3 className="text-xl font-black uppercase tracking-tighter text-black">Request a Custom Quote (500+ Units)</h3>
+              <h3 className="text-xl font-black uppercase tracking-tighter text-black">Request a Custom Quote</h3>
               {!isSubmittingQuote && (
                 <button onClick={() => setIsQuoteModalOpen(false)} className="p-2 bg-white rounded-full text-gray-500 hover:text-black hover:bg-gray-200 transition-colors shadow-sm"><X size={20}/></button>
               )}

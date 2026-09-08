@@ -28,7 +28,6 @@ const validatePassword = (password: string) => {
   if (!/[0-9]/.test(password)) errors.push("One number");
   if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) errors.push("One special character");
   
-  // Evitar secuencias numéricas (ej. 123, 456, 111, 222)
   const hasSequentialOrRepeatedNumbers = /(012|123|234|345|456|567|678|789|890|000|111|222|333|444|555|666|777|888|999)/.test(password);
   if (hasSequentialOrRepeatedNumbers) errors.push("No sequential or repeated numbers (e.g. 123 or 111)");
 
@@ -53,7 +52,6 @@ export default function AdminDashboard() {
 
   const [profile, setProfile] = useState({ first_name: "", last_name: "", avatar_url: "", role: "" });
   
-  // 🚀 Estados para la contraseña segura en el Perfil de Admin
   const [password, setPassword] = useState("");
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   
@@ -109,8 +107,8 @@ export default function AdminDashboard() {
     companyName: "Fieldstone Embroidery Store",
     address: "Santo Domingo, Distrito Nacional\nDominican Republic",
     email: "dmarra@fieldstoneembroidery.com",
+    phone: "978.219.9071", // 🚀 ESTADO PARA TELÉFONO
     facebookUrl: "#",
-    twitterUrl: "#",
     instagramUrl: "#",
     linkedinUrl: "#"
   });
@@ -247,8 +245,8 @@ export default function AdminDashboard() {
         companyName: settings.footer_company_name || "Fieldstone Embroidery Store",
         address: settings.footer_address || "Santo Domingo, Distrito Nacional\nDominican Republic",
         email: settings.footer_email || "dmarra@fieldstoneembroidery.com",
+        phone: settings.footer_phone || "978.219.9071", // 🚀 LEE TELÉFONO DE LA BD
         facebookUrl: settings.footer_facebook_url || "#",
-        twitterUrl: settings.footer_twitter_url || "#",
         instagramUrl: settings.footer_instagram_url || "#",
         linkedinUrl: settings.footer_linkedin_url || "#"
       });
@@ -267,7 +265,6 @@ export default function AdminDashboard() {
     checkAdminAndLoadData();
   }, [checkAdminAndLoadData]);
 
-  // 🚀 Validar contraseña en vivo mientras el admin escribe
   useEffect(() => {
     if (password.length > 0) {
       setPasswordErrors(validatePassword(password));
@@ -340,8 +337,8 @@ export default function AdminDashboard() {
       footer_company_name: footerData.companyName,
       footer_address: footerData.address,
       footer_email: footerData.email,
+      footer_phone: footerData.phone, // 🚀 GUARDA EL TELÉFONO EN LA BD
       footer_facebook_url: footerData.facebookUrl,
-      footer_twitter_url: footerData.twitterUrl,
       footer_instagram_url: footerData.instagramUrl,
       footer_linkedin_url: footerData.linkedinUrl
     });
@@ -1168,9 +1165,17 @@ export default function AdminDashboard() {
                   <textarea rows={3} value={footerData.address} onChange={e => setFooterData({...footerData, address: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Contact Email</label>
-                  <input type="email" value={footerData.email} onChange={e => setFooterData({...footerData, email: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Contact Email</label>
+                    <input type="email" value={footerData.email} onChange={e => setFooterData({...footerData, email: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                  </div>
+                  
+                  {/* 🚀 NUEVO CAMPO: PHONE NUMBER */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Phone Number</label>
+                    <input type="tel" value={footerData.phone} onChange={e => setFooterData({...footerData, phone: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1185,10 +1190,6 @@ export default function AdminDashboard() {
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Facebook URL</label>
                   <input type="url" value={footerData.facebookUrl} onChange={e => setFooterData({...footerData, facebookUrl: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-600 transition-colors shadow-sm"/>
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Twitter / X URL</label>
-                  <input type="url" value={footerData.twitterUrl} onChange={e => setFooterData({...footerData, twitterUrl: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-600 transition-colors shadow-sm"/>
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Instagram URL</label>
