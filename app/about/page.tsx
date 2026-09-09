@@ -7,10 +7,10 @@ import Link from "next/link"; // ✅ Agregamos la importación de Link
 
 // Importaciones de imágenes
 import imgAbout from "@/public/emb/product-photo-(7).png";
-import imgTshirts from "@/public/emb/product-photo-(4).png";
+import imgTshirts from "@/public/emb/tshirts_polos-v2.jpg";
 import imgHoodies from "@/public/emb/product-photo-(12).png";
 import imgHats from "@/public/emb/fondo-1.png";
-import imgPromo from "@/public/emb/productphotodetamanomediano.jpeg";
+import imgPromo from "@/public/emb/Promotinal_Items.jpg";
 
 export default function AboutUsPage() {
   return (
