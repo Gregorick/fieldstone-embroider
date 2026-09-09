@@ -5,6 +5,7 @@ import { useCart } from "../context/CartContext";
 import { X, Plus, Minus, Trash2, ShoppingBag, Lock, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { getLiveInventory } from "@/app/actions/sanmarApi";
+import { supabase } from "@/lib/supabase"; // 🚀 IMPORTAMOS SUPABASE
 
 export default function SlideOutCart() {
   const { isCartOpen, setIsCartOpen, cartItems, removeFromCart, updateQuantity, cartTotal } = useCart();
@@ -14,10 +15,27 @@ export default function SlideOutCart() {
   const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
   const [checkingStock, setCheckingStock] = useState(false);
 
-  // Variables para la lógica del Small Order Fee
-  const feeThreshold = 300;
-  const feeAmount = 65;
+  // 🚀 ESTADOS DINÁMICOS PARA EL SMALL ORDER FEE
+  const [feeThreshold, setFeeThreshold] = useState<number>(300);
+  const [feeAmount, setFeeAmount] = useState<number>(65);
+  
   const amountAway = feeThreshold - cartTotal;
+
+  // 🚀 CARGAR CONFIGURACIÓN DESDE SUPABASE AL INICIAR
+  useEffect(() => {
+    async function fetchStoreSettings() {
+      try {
+        const { data } = await supabase.from('store_settings').select('small_order_fee_threshold, small_order_fee_amount').eq('id', 'default').single();
+        if (data) {
+          if (data.small_order_fee_threshold !== undefined) setFeeThreshold(Number(data.small_order_fee_threshold));
+          if (data.small_order_fee_amount !== undefined) setFeeAmount(Number(data.small_order_fee_amount));
+        }
+      } catch (err) {
+        console.error("Error fetching store settings for cart:", err);
+      }
+    }
+    fetchStoreSettings();
+  }, []);
 
   // Cargar el logo global y verificar stock en vivo al abrir el carrito
   useEffect(() => {
@@ -214,10 +232,10 @@ export default function SlideOutCart() {
             {cartTotal < feeThreshold && (
               <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
                 <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
-                  Orders under ${feeThreshold} are subject to a ${feeAmount} small order processing fee at checkout. <br/>
-                  <span className="font-black text-amber-600 block mt-1">
-                    You are ${amountAway.toFixed(2)} away from waiving this fee!
+                <p className="text-[10px] font-medium text-amber-800 leading-relaxed uppercase tracking-wide">
+                  Orders under <strong>${feeThreshold}</strong> are subject to a <strong>${feeAmount}</strong> small order processing fee at checkout. <br/>
+                  <span className="font-medium text-amber-600 block mt-1">
+                    You are <strong>${amountAway.toFixed(2)}</strong> away from waiving this fee!
                   </span>
                 </p>
               </div>
@@ -228,8 +246,8 @@ export default function SlideOutCart() {
               <span className="text-3xl font-black text-black tracking-tighter leading-none">${cartTotal.toFixed(2)}</span>
             </div>
             
-            <p className="text-[10px] font-bold text-gray-400 mb-6 text-center bg-gray-50 p-2 rounded-lg border border-gray-100">
-              Shipping, taxes, and Small Order Fees (if applicable) calculated at checkout.
+            <p className="text-[10px] text-gray-400 mb-6 text-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+              Shipping, taxes, and applicable small-order fees are calculated at checkout.
             </p>
             
             <div className="flex flex-col gap-3">

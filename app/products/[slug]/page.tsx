@@ -8,7 +8,7 @@ import { getLiveInventory } from "@/app/actions/sanmarApi";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import { useCart } from "../../context/CartContext";
-import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus, Send, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, AlertCircle, Info, ShieldCheck, Truck, X, Minus, Plus, Send, ArrowRight, AlertTriangle } from "lucide-react";
 
 import placement1 from "@/public/PLACEMENT-GUIDE_Pagina_1.jpg";
 import placement2 from "@/public/PLACEMENT-GUIDE_Pagina_2.jpg";
@@ -518,7 +518,6 @@ function ProductPageContent() {
               </div>
               <div className="flex flex-wrap gap-3">
                 {availableColorObjects.map(color => {
-                  // 🚀 MAGIA VISUAL: Verificamos si este color está out of stock para la talla actual
                   const variantToCheck = variants.find(v => v.color_name === color.name && v.size === selectedSize);
                   let isColorOutOfStock = false;
                   if (variantToCheck && liveInventory.length > 0) {
@@ -528,7 +527,6 @@ function ProductPageContent() {
 
                   const isSelected = selectedColor === color.name;
                   
-                  // Generamos las clases basadas en selección y disponibilidad
                   let buttonClass = `w-[4.5rem] h-20 rounded-xl overflow-hidden border-2 transition-all p-1 bg-gray-50 relative cursor-pointer `;
                   if (isSelected) {
                     buttonClass += isColorOutOfStock 
@@ -557,7 +555,6 @@ function ProductPageContent() {
                           onError={(e) => { e.currentTarget.style.display = 'none'; }} 
                           className={`w-full h-full object-cover transition-opacity ${isColorOutOfStock && !isSelected ? 'opacity-40 grayscale-[50%]' : ''}`} 
                         />
-                        {/* Pequeña X si está agotado */}
                         {isColorOutOfStock && (
                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                               <div className="bg-red-600/90 text-white rounded-full p-0.5 shadow-sm">
@@ -579,7 +576,6 @@ function ProductPageContent() {
               </div>
               <div className="flex flex-wrap gap-2 mb-4">
                 {availableSizes.map(size => {
-                  // 🚀 MAGIA VISUAL: Verificamos si esta talla está out of stock para el color actual
                   const sizeVariant = variants.find(v => v.color_name === selectedColor && v.size === size);
                   let isSizeOutOfStock = false;
                   if (sizeVariant && liveInventory.length > 0) {
@@ -611,7 +607,6 @@ function ProductPageContent() {
                       title={isSizeOutOfStock ? `${size} (Out of Stock)` : size}
                     >
                       {size}
-                      {/* Tachado si está agotado y no seleccionado */}
                       {isSizeOutOfStock && !isSelected && (
                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-50">
                            <div className="w-full h-[2px] bg-red-500 -rotate-12 absolute scale-110"></div>
@@ -753,6 +748,20 @@ function ProductPageContent() {
                         </select>
                         <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>
+
+                      {/* 🚀 AVISO DE MARCA REGISTRADA ULTRA VISIBLE */}
+                      <div className="mt-6 p-5 bg-red-600 rounded-2xl flex items-start gap-4 shadow-xl shadow-red-600/30 animate-in zoom-in-95 duration-500">
+                        <div className="bg-white p-2 rounded-full flex-shrink-0 shadow-sm mt-0.5">
+                          <AlertTriangle size={20} className="text-red-600" strokeWidth={3} />
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-black text-red-200 uppercase tracking-widest mb-1">Important Notice</h4>
+                          <p className="text-[13px] sm:text-sm font-bold text-white leading-relaxed">
+                            Items showing a visible brand logo <span className="underline decoration-red-300 decoration-2 underline-offset-4">cannot be decorated</span> on the same side where the brand logo appears.
+                          </p>
+                        </div>
+                      </div>
+
                     </div>
 
                     {location1 && (decorationMethod === "emb" || decorationMethod === "sp") && availableLocations.length > 1 && (

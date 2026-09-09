@@ -474,8 +474,8 @@ export default function CheckoutPage() {
             {appliesSmallOrderFee && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
                 <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
-                  Orders under ${feeThreshold} are subject to a ${feeAmount} small order processing fee.
+                <p className="text-[10px] font-medium text-amber-800 leading-relaxed uppercase tracking-wide">
+                  Orders under <strong>${feeThreshold}</strong> are subject to a <strong>${feeAmount}</strong> small order processing fee.
                 </p>
               </div>
             )}
