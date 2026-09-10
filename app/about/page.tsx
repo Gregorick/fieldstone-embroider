@@ -3,7 +3,7 @@
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import Image from "next/image";
-import Link from "next/link"; // ✅ Agregamos la importación de Link
+import Link from "next/link"; 
 
 // Importaciones de imágenes
 import imgAbout from "@/public/emb/product-photo-(7).png";
@@ -63,7 +63,7 @@ export default function AboutUsPage() {
             { 
               title: "T-Shirts and Polos", 
               img: imgTshirts,
-              link: `/products?category=${encodeURIComponent("Polo/Knits")}` 
+              link: `/products?category=${encodeURIComponent("Polos/Knits")}`
             },
             { 
               title: "Hoodies and Sweaters", 
@@ -78,11 +78,10 @@ export default function AboutUsPage() {
             { 
               title: "Promotional Items", 
               img: imgPromo,
-              link: `/products?category=${encodeURIComponent("Accessories")}` 
+              link: `/promotional-items` // 🚀 FIX: Enlace directo a la nueva página
             },
           ].map((item, index) => (
             <Link key={index} href={item.link} className="group block cursor-pointer">
-              {/* ✅ Contenedor ajustado para verse idéntico a tu captura (más ancho, menos alto) */}
               <div className="aspect-[4/3] relative rounded-2xl overflow-hidden mb-6 flex items-center justify-center p-4">
                 <Image 
                   src={item.img} 
@@ -91,7 +90,6 @@ export default function AboutUsPage() {
                   className="object-contain transition-transform duration-500 group-hover:scale-110 mix-blend-multiply" 
                 />
               </div>
-              {/* ✅ Título centrado y sin cortarse */}
               <h3 className="text-[14px] md:text-[15px] font-black text-black uppercase text-center tracking-wide group-hover:text-[#8012d8] transition-colors">
                 {item.title}
               </h3>

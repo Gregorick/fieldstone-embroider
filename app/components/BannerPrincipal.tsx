@@ -63,7 +63,7 @@ export default function BannerPrincipal() {
                   </span>
                 </div>
                 
-                <h2 className="text-5xl md:text-6xl lg:text-7xl font-black tracking-tighter text-black leading-[1.05]">
+                <h2 className="text-4xl md:text-4xl lg:text-5xl font-black tracking-tighter text-black leading-[1.05]">
                   {slide.headline.split('. ').map((part, index, array) => (
                     <span key={index}>
                       {part}
