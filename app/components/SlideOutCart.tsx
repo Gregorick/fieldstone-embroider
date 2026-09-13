@@ -5,30 +5,28 @@ import { useCart } from "../context/CartContext";
 import { X, Plus, Minus, Trash2, ShoppingBag, Lock, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { getLiveInventory } from "@/app/actions/sanmarApi";
-import { supabase } from "@/lib/supabase"; // 🚀 IMPORTAMOS SUPABASE
+import { supabase } from "@/lib/supabase";
 
 export default function SlideOutCart() {
   const { isCartOpen, setIsCartOpen, cartItems, removeFromCart, updateQuantity, cartTotal } = useCart();
   const [customLogo, setCustomLogo] = useState<string | null>(null);
 
-  // Estados para el control de inventario en vivo en el carrito
   const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
   const [checkingStock, setCheckingStock] = useState(false);
 
-  // 🚀 ESTADOS DINÁMICOS PARA EL SMALL ORDER FEE
-  const [feeThreshold, setFeeThreshold] = useState<number>(300);
-  const [feeAmount, setFeeAmount] = useState<number>(65);
-  
+  // 🚀 TARIFA OCULTA - La seteamos pero no la usamos visualmente ni afecta el total temporalmente
+  const [feeThreshold, setFeeThreshold] = useState<number>(0); // Desactivado
+  const [feeAmount, setFeeAmount] = useState<number>(0);       // Desactivado
   const amountAway = feeThreshold - cartTotal;
 
-  // 🚀 CARGAR CONFIGURACIÓN DESDE SUPABASE AL INICIAR
   useEffect(() => {
     async function fetchStoreSettings() {
       try {
         const { data } = await supabase.from('store_settings').select('small_order_fee_threshold, small_order_fee_amount').eq('id', 'default').single();
         if (data) {
-          if (data.small_order_fee_threshold !== undefined) setFeeThreshold(Number(data.small_order_fee_threshold));
-          if (data.small_order_fee_amount !== undefined) setFeeAmount(Number(data.small_order_fee_amount));
+          // Ocultado temporalmente. Si deseas reactivarlo, quita el '0' y usa la data
+          setFeeThreshold(0); // Number(data.small_order_fee_threshold)
+          setFeeAmount(0);    // Number(data.small_order_fee_amount)
         }
       } catch (err) {
         console.error("Error fetching store settings for cart:", err);
@@ -37,14 +35,12 @@ export default function SlideOutCart() {
     fetchStoreSettings();
   }, []);
 
-  // Cargar el logo global y verificar stock en vivo al abrir el carrito
   useEffect(() => {
     async function fetchCartInventory() {
       if (!cartItems.length) return;
       setCheckingStock(true);
       const stocksMap: Record<string, number> = {};
 
-      // Extraer estilos únicos presentes en el carrito usando item.style o item.slug
       const uniqueStyles = Array.from(new Set(cartItems.map((item: any) => item.style || item.slug)));
 
       for (const style of uniqueStyles) {
@@ -52,7 +48,6 @@ export default function SlideOutCart() {
           const inventory = await getLiveInventory(style);
           if (inventory && Array.isArray(inventory)) {
             inventory.forEach((invItem: any) => {
-              // Mapeamos el stock usando el SKU / PART_ID exacto de la API
               stocksMap[invItem.sku] = invItem.qty;
             });
           }
@@ -72,7 +67,6 @@ export default function SlideOutCart() {
     }
   }, [isCartOpen, cartItems]);
 
-  // Validar si algún producto en el carrito excede el stock actual en vivo
   const hasStockIssues = cartItems.some((item: any) => {
     const stockKey = String(item.unique_key || item.sku || item.style);
     const stock = itemStocks[stockKey];
@@ -83,16 +77,13 @@ export default function SlideOutCart() {
 
   return (
     <>
-      {/* OVERLAY FONDO OSCURO */}
       <div 
         className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] transition-opacity"
         onClick={() => setIsCartOpen(false)}
       />
 
-      {/* PANEL DEL CARRITO */}
       <div className="fixed top-0 right-0 h-full w-full sm:w-[450px] bg-white z-[201] shadow-2xl flex flex-col animate-in slide-in-from-right-full duration-300">
         
-        {/* HEADER CARRITO */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
           <div className="flex items-center gap-3">
             <ShoppingBag className="text-black" size={20} strokeWidth={2.5} />
@@ -106,7 +97,6 @@ export default function SlideOutCart() {
           </button>
         </div>
 
-        {/* CUERPO DEL CARRITO (LISTA DE ITEMS) */}
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           {cartItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
@@ -127,12 +117,8 @@ export default function SlideOutCart() {
 
                 return (
                   <div key={item.id} className="flex gap-5 group">
-                    
-                    {/* IMAGEN DEL PRODUCTO + MINIATURA DEL LOGO */}
                     <div className="w-24 h-32 bg-[#F3F3F3] rounded-2xl p-2 flex items-center justify-center flex-shrink-0 relative border border-gray-100 shadow-inner group-hover:border-gray-200 transition-colors">
                       <img src={item.image} alt={item.title} className="w-full h-full object-contain mix-blend-multiply" />
-                      
-                      {/* Badge de Miniatura del Logo */}
                       {customLogo && (
                         <div 
                           className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-gray-200 rounded-xl shadow-md p-1 flex items-center justify-center overflow-hidden z-10"
@@ -143,7 +129,6 @@ export default function SlideOutCart() {
                       )}
                     </div>
 
-                    {/* DETALLES DEL PRODUCTO */}
                     <div className="flex-1 flex flex-col justify-between py-1">
                       <div>
                         <div className="flex justify-between items-start gap-2">
@@ -161,7 +146,6 @@ export default function SlideOutCart() {
                           </button>
                         </div>
                         
-                        {/* INFORMACIÓN DE CONFIGURACIÓN */}
                         <div className="mt-3 space-y-1.5 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
                           <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span> 
@@ -182,7 +166,6 @@ export default function SlideOutCart() {
                             </p>
                           )}
 
-                          {/* 🚀 ADVERTENCIA DE STOCK EN VIVO */}
                           {isExceeding && (
                             <p className="text-[9px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1 mt-1 pt-1 border-t border-red-100">
                               <AlertCircle size={10} /> Only {itemStock} available in stock. Please reduce quantity.
@@ -191,13 +174,10 @@ export default function SlideOutCart() {
                         </div>
                       </div>
 
-                      {/* CONTROLES DE CANTIDAD Y PRECIO */}
                       <div className="flex items-center justify-between mt-4">
                         <div className="flex items-center border border-gray-200 rounded-lg h-9 bg-white shadow-sm">
                           <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-3 text-gray-500 hover:text-black transition-colors"><Minus size={12} strokeWidth={3} /></button>
                           <span className="w-8 text-center text-[12px] font-black text-black">{item.quantity}</span>
-                          
-                          {/* 🛡️ BOTÓN PLUS BLINDADO: Bloquea si item.quantity >= itemStock */}
                           <button 
                             onClick={() => {
                               if (itemStock !== undefined && item.quantity >= itemStock) return;
@@ -224,30 +204,15 @@ export default function SlideOutCart() {
           )}
         </div>
 
-        {/* FOOTER CARRITO (TOTALES Y CHECKOUT) */}
         {cartItems.length > 0 && (
           <div className="border-t border-gray-100 p-6 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20 relative">
-            
-            {/* ✅ ALERTA DE SMALL ORDER FEE */}
-            {cartTotal < feeThreshold && (
-              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-                <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] font-medium text-amber-800 leading-relaxed uppercase tracking-wide">
-                  Orders under <strong>${feeThreshold}</strong> are subject to a <strong>${feeAmount}</strong> small order processing fee at checkout. <br/>
-                  <span className="font-medium text-amber-600 block mt-1">
-                    You are <strong>${amountAway.toFixed(2)}</strong> away from waiving this fee!
-                  </span>
-                </p>
-              </div>
-            )}
-
             <div className="flex justify-between items-end mb-4">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Subtotal</span>
               <span className="text-3xl font-black text-black tracking-tighter leading-none">${cartTotal.toFixed(2)}</span>
             </div>
             
             <p className="text-[10px] text-gray-400 mb-6 text-center bg-gray-50 p-2 rounded-lg border border-gray-100">
-              Shipping, taxes, and applicable small-order fees are calculated at checkout.
+              Shipping and taxes are calculated at checkout.
             </p>
             
             <div className="flex flex-col gap-3">

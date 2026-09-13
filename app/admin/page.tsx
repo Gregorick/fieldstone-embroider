@@ -107,7 +107,7 @@ export default function AdminDashboard() {
     companyName: "Fieldstone Embroidery Store",
     address: "Santo Domingo, Distrito Nacional\nDominican Republic",
     email: "dmarra@fieldstoneembroidery.com",
-    phone: "978.219.9071", // 🚀 ESTADO PARA TELÉFONO
+    phone: "978.219.9071",
     facebookUrl: "#",
     instagramUrl: "#",
     linkedinUrl: "#"
@@ -245,7 +245,7 @@ export default function AdminDashboard() {
         companyName: settings.footer_company_name || "Fieldstone Embroidery Store",
         address: settings.footer_address || "Santo Domingo, Distrito Nacional\nDominican Republic",
         email: settings.footer_email || "dmarra@fieldstoneembroidery.com",
-        phone: settings.footer_phone || "978.219.9071", // 🚀 LEE TELÉFONO DE LA BD
+        phone: settings.footer_phone || "978.219.9071",
         facebookUrl: settings.footer_facebook_url || "#",
         instagramUrl: settings.footer_instagram_url || "#",
         linkedinUrl: settings.footer_linkedin_url || "#"
@@ -337,7 +337,7 @@ export default function AdminDashboard() {
       footer_company_name: footerData.companyName,
       footer_address: footerData.address,
       footer_email: footerData.email,
-      footer_phone: footerData.phone, // 🚀 GUARDA EL TELÉFONO EN LA BD
+      footer_phone: footerData.phone,
       footer_facebook_url: footerData.facebookUrl,
       footer_instagram_url: footerData.instagramUrl,
       footer_linkedin_url: footerData.linkedinUrl
@@ -933,7 +933,7 @@ export default function AdminDashboard() {
                       className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                     >
                       <ChevronRight size={16} />
-                    </button>
+                      </button>
                   </div>
                 </div>
               )}
@@ -941,6 +941,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 🚀 PESTAÑA PRICING: SE HAN OCULTADO LOS CAMPOS DEL SMALL ORDER FEE */}
         {activeTab === "pricing" && (
           <div className="animate-in fade-in duration-500 max-w-5xl">
             <div className="flex justify-between items-center mb-8">
@@ -955,26 +956,15 @@ export default function AdminDashboard() {
               <div>
                 <h3 className="text-sm font-black uppercase tracking-widest text-blue-900 mb-2">How Pricing Rules Work</h3>
                 <p className="text-xs font-medium text-blue-800/80 leading-relaxed max-w-3xl">
-                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and modify both the quantity range bounds and the Small Order Fee threshold.
+                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and modify the quantity range bounds.
                 </p>
               </div>
             </div>
 
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Small Order Threshold ($)</label>
-                <div className="relative">
-                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="number" value={feeThreshold} onChange={(e) => setFeeThreshold(Number(e.target.value))} className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Small Order Fee Amount ($)</label>
-                <div className="relative">
-                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(Number(e.target.value))} className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
-                </div>
-              </div>
+            {/* 🔥 LOS CAMPOS DE SMALL ORDER FEE ESTÁN OCULTOS PERO LA LÓGICA ESTÁ INTACTA */}
+            <div className="hidden">
+              <input type="number" value={feeThreshold} onChange={(e) => setFeeThreshold(Number(e.target.value))} />
+              <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(Number(e.target.value))} />
             </div>
 
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1171,7 +1161,6 @@ export default function AdminDashboard() {
                     <input type="email" value={footerData.email} onChange={e => setFooterData({...footerData, email: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
                   </div>
                   
-                  {/* 🚀 NUEVO CAMPO: PHONE NUMBER */}
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Phone Number</label>
                     <input type="tel" value={footerData.phone} onChange={e => setFooterData({...footerData, phone: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>

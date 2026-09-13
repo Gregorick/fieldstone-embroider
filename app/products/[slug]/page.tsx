@@ -123,8 +123,8 @@ function ProductPageContent() {
   const [basePrice, setBasePrice] = useState<number>(0);
   
   const [decorationTiers, setDecorationTiers] = useState<any[]>(DEFAULT_DECORATION_TIERS);
-  const [feeThreshold, setFeeThreshold] = useState<number>(300);
-  const [feeAmount, setFeeAmount] = useState<number>(65);
+  const [feeThreshold, setFeeThreshold] = useState<number>(0); // Oculto el fee real
+  const [feeAmount, setFeeAmount] = useState<number>(0);
 
   const [mainImage, setMainImage] = useState<string>("");
   const [gallery, setGallery] = useState<string[]>([]);
@@ -132,11 +132,12 @@ function ProductPageContent() {
 
   const [isPlacementGuideOpen, setIsPlacementGuideOpen] = useState(false);
 
+  // 🚀 FIX: Modificamos el contenido de "Pricing & Fees" para que no hable de Small Order Fee
   const DISCLOSURES = [
     { id: "preview", icon: <Info size={16}/>, title: "What Your Logo Might Look Like", content: "Preview will not represent exact size or location. A proof will be provided before production begins. Logos placed in standard location unless otherwise requested." },
     { id: "one-logo", icon: <Check size={16}/>, title: "One Logo Per Order", content: "Logo goes on all products in the order. No need to upload logo on every item. Location changes should be noted at checkout. Color changes by item should be noted at checkout." },
     { id: "legal", icon: <ShieldCheck size={16}/>, title: "Legal Right to Use Logo", content: "You confirm you have legal right to use uploaded logo. We will cancel order if rights cannot be established." },
-    { id: "pricing", icon: <AlertCircle size={16}/>, title: "Pricing & Fees", content: `All prices include your logo — no surprise charges. Orders under $${feeThreshold} → $${feeAmount} small order processing fee. Mix and match styles to reach $${feeThreshold} and waive the fee. 500+ pieces → use Request a Quote button.` },
+    { id: "pricing", icon: <AlertCircle size={16}/>, title: "Pricing & Fees", content: `All prices include your logo — no surprise charges. 500+ pieces → use Request a Quote button.` },
     { id: "shipping", icon: <Truck size={16}/>, title: "Turnaround & Shipping", content: "Standard orders: 7–10 business days after proof approval. Rush orders available — contact us before ordering. Free shipping on orders over $400. New logos require digitizing — allow 1 additional business day." },
   ];
 
@@ -175,8 +176,9 @@ function ProductPageContent() {
           }));
           setDecorationTiers(parsedTiers);
         }
-        if (settings.small_order_fee_threshold) setFeeThreshold(Number(settings.small_order_fee_threshold));
-        if (settings.small_order_fee_amount) setFeeAmount(Number(settings.small_order_fee_amount));
+        // Desactivamos la asignación de fee para que no se utilice accidentalmente
+        // if (settings.small_order_fee_threshold) setFeeThreshold(Number(settings.small_order_fee_threshold));
+        // if (settings.small_order_fee_amount) setFeeAmount(Number(settings.small_order_fee_amount));
       }
 
       const { data: productData } = await supabase
@@ -822,16 +824,6 @@ function ProductPageContent() {
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-
-            {totalSubtotal < feeThreshold && numericQuantity < 500 && !isMultipleLocations && (
-              <div className="mb-10 p-5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
-                <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] font-bold text-amber-800 leading-relaxed uppercase tracking-wide">
-                  Orders under ${feeThreshold} are subject to a ${feeAmount} small order processing fee at checkout. <br/>
-                  <span className="font-black text-amber-600 block mt-1">You are ${(feeThreshold - totalSubtotal).toFixed(2)} away from waiving this fee!</span>
-                </p>
               </div>
             )}
 

@@ -13,24 +13,20 @@ export default function CartPage() {
   const { cartItems, updateQuantity, removeFromCart, cartTotal } = useCart();
   const [customLogo, setCustomLogo] = useState<string | null>(null);
 
-  // Estados para el control de inventario en vivo en la página del carrito
   const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
   const [checkingStock, setCheckingStock] = useState(false);
 
-  // Cargar el logo global subido por el cliente
   useEffect(() => {
     const savedLogo = localStorage.getItem("user_custom_logo");
     if (savedLogo) setCustomLogo(savedLogo);
   }, []);
 
-  // Consultar inventario en vivo de los productos en el carrito al cargar la página
   useEffect(() => {
     async function fetchCartInventory() {
       if (!cartItems.length) return;
       setCheckingStock(true);
       const stocksMap: Record<string, number> = {};
 
-      // Extraer estilos únicos presentes en el carrito
       const uniqueStyles = Array.from(new Set(cartItems.map((item: any) => item.style || item.slug)));
 
       for (const style of uniqueStyles) {
@@ -38,7 +34,6 @@ export default function CartPage() {
           const inventory = await getLiveInventory(style);
           if (inventory && Array.isArray(inventory)) {
             inventory.forEach((invItem: any) => {
-              // Mapeamos el stock usando el SKU / PART_ID exacto de la API
               stocksMap[invItem.sku] = invItem.qty;
             });
           }
@@ -54,7 +49,6 @@ export default function CartPage() {
     fetchCartInventory();
   }, [cartItems]);
 
-  // Validar si algún producto en el carrito excede el stock actual en vivo
   const hasStockIssues = cartItems.some((item: any) => {
     const stockKey = String(item.unique_key || item.sku || item.style);
     const stock = itemStocks[stockKey];
@@ -109,14 +103,12 @@ export default function CartPage() {
                     <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center border-b border-gray-100 pb-8 group/row">
                       
                       <div className="col-span-1 md:col-span-6 flex gap-6 items-center">
-                        {/* ✅ IMAGEN DEL PRODUCTO LINKEADA AL SLUG */}
                         <Link href={`/products/${item.slug}`} className="w-28 h-36 bg-[#F3F3F3] rounded-3xl p-4 flex-shrink-0 relative overflow-hidden group-hover/row:border-gray-200 border border-gray-100 shadow-inner transition-colors">
                           <img 
                             src={item.image} 
                             alt={item.title} 
                             className="absolute inset-0 w-full h-full object-contain mix-blend-multiply group-hover/row:scale-110 transition-transform duration-700 p-2" 
                           />
-                          {/* Miniatura del logo superpuesta */}
                           {customLogo && (
                             <div 
                               className="absolute bottom-2 right-2 w-10 h-10 bg-white border border-gray-200 rounded-xl shadow-md p-1 flex items-center justify-center overflow-hidden z-10"
@@ -127,15 +119,12 @@ export default function CartPage() {
                           )}
                         </Link>
 
-                        {/* DETALLES TÉCNICOS DEL PRODUCTO */}
                         <div className="flex-1">
                           <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-1">SanMar Catalog</span>
-                          {/* ✅ TÍTULO LINKEADO AL SLUG */}
                           <Link href={`/products/${item.slug}`} className="text-[14px] font-bold text-black uppercase tracking-tight hover:text-blue-600 transition-colors block mb-2 line-clamp-2 pr-4">
                             {item.title}
                           </Link>
                           
-                          {/* Etiqueta Técnica de Opciones */}
                           <div className="mt-3 space-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100 inline-block min-w-full lg:min-w-[280px]">
                             <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
                               <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span> 
@@ -156,7 +145,6 @@ export default function CartPage() {
                               </p>
                             )}
 
-                            {/* 🚀 ADVERTENCIA DE STOCK EN VIVO */}
                             {isExceeding && (
                               <p className="text-[9px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1 mt-1 pt-1 border-t border-red-100">
                                 <AlertCircle size={10} /> Only {itemStock} available in stock. Please reduce quantity.
@@ -168,13 +156,10 @@ export default function CartPage() {
                         </div>
                       </div>
 
-                      {/* CONTROLES DE CANTIDAD BLINDADOS */}
                       <div className="col-span-1 md:col-span-3 flex justify-start md:justify-center">
                         <div className="flex items-center border border-gray-200 rounded-2xl h-12 bg-white transition-colors hover:border-gray-300 shadow-sm">
                           <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-4 text-gray-500 hover:text-black transition-colors"><Minus size={14} strokeWidth={3} /></button>
                           <span className="w-8 text-center text-black text-[13px] font-black">{item.quantity}</span>
-                          
-                          {/* 🛡️ BOTÓN PLUS BLINDADO: Bloquea si item.quantity >= itemStock */}
                           <button 
                             onClick={() => {
                               if (itemStock !== undefined && item.quantity >= itemStock) return;
@@ -189,13 +174,11 @@ export default function CartPage() {
                         </div>
                       </div>
 
-                      {/* PRECIO TOTAL POR FILA */}
                       <div className="col-span-1 md:col-span-2 text-left md:text-right flex flex-col justify-center">
                         <span className="text-[11px] font-bold text-gray-400 mb-1 hidden md:block">${item.price.toFixed(2)}/ea</span>
                         <span className="text-xl font-black text-black tracking-tighter">${(item.price * item.quantity).toFixed(2)}</span>
                       </div>
 
-                      {/* BOTÓN DE ELIMINAR */}
                       <div className="col-span-1 text-right">
                         <button 
                           onClick={() => removeFromCart(item.id)} 
@@ -212,7 +195,6 @@ export default function CartPage() {
               </div>
             </div>
 
-            {/* RESUMEN DEL PEDIDO */}
             <div className="w-full lg:w-[400px] bg-gray-50 p-10 rounded-[2.5rem] sticky top-8 border border-gray-100 shadow-sm">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-black mb-8">Order Summary</h2>
               
@@ -232,7 +214,6 @@ export default function CartPage() {
                 <span className="text-4xl font-black text-black tracking-tighter leading-none">${cartTotal.toFixed(2)}</span>
               </div>
 
-              {/* 🛡️ BOTÓN DE CHECKOUT BLINDADO SI HAY PROBLEMAS DE STOCK */}
               <Link 
                 href={hasStockIssues ? "#" : "/checkout"}
                 onClick={(e) => {

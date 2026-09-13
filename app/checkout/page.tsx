@@ -61,20 +61,16 @@ export default function CheckoutPage() {
     phone: ""
   });
 
-  const [feeThreshold, setFeeThreshold] = useState<number>(300);
-  const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>([]);
 
-  const appliesSmallOrderFee = cartTotal > 0 && cartTotal < feeThreshold;
-  const currentFee = appliesSmallOrderFee ? feeAmount : 0;
+  // 🚀 TARIFA OCULTA (Siempre será 0 a partir de ahora)
+  const currentFee = 0; 
 
   useEffect(() => {
     async function fetchUserDataAndSettings() {
-      const { data: settings } = await supabase.from("store_settings").select("small_order_fee_threshold, small_order_fee_amount, decoration_tiers").eq("id", "default").maybeSingle();
+      const { data: settings } = await supabase.from("store_settings").select("decoration_tiers").eq("id", "default").maybeSingle();
       
       if (settings) {
-        if (settings.small_order_fee_threshold !== undefined) setFeeThreshold(settings.small_order_fee_threshold);
-        if (settings.small_order_fee_amount !== undefined) setFeeAmount(settings.small_order_fee_amount);
         if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
       }
 
@@ -183,7 +179,7 @@ export default function CheckoutPage() {
   }
   
   const shippingCost = deliveryMethod === "pickup" ? 0 : currentShippingCost;
-  const finalTotal = cartTotal + shippingCost + currentFee;
+  const finalTotal = cartTotal + shippingCost + currentFee; // currentFee ahora es 0 siempre
 
   const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -217,7 +213,6 @@ export default function CheckoutPage() {
 
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
-      // 🔥 AHORA SÍ ENVIAMOS LA DIRECCIÓN COMPLETA
       const orderResult = await createCompleteOrder(
         cartItems,
         { 
@@ -252,7 +247,7 @@ export default function CheckoutPage() {
           email: formData.email,
           orderId: orderId,
           shippingCost: shippingCost,
-          smallOrderFee: currentFee
+          smallOrderFee: currentFee // Sigue siendo 0, Stripe no agregará el cargo.
         }),
       });
 
@@ -412,7 +407,6 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* 🔥 SELECTOR DE ENVÍO / RECOGIDA QUE APARECE SOLO SI ES ELEGIBLE */}
                 {isPickupEligible && (
                   <div className="mt-6 p-6 bg-white border border-gray-200 rounded-2xl animate-in fade-in slide-in-from-top-2 shadow-sm">
                     <h3 className="text-xs font-black uppercase tracking-widest text-black mb-4">Select Delivery Method</h3>
@@ -470,15 +464,6 @@ export default function CheckoutPage() {
 
           <div className="lg:col-span-5 w-full bg-gray-50 p-8 md:p-10 rounded-[2.5rem] sticky top-8 border border-gray-100">
             <h2 className="text-2xl font-black uppercase tracking-tighter text-black mb-8">Order Summary</h2>
-            
-            {appliesSmallOrderFee && (
-              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-                <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] font-medium text-amber-800 leading-relaxed uppercase tracking-wide">
-                  Orders under <strong>${feeThreshold}</strong> are subject to a <strong>${feeAmount}</strong> small order processing fee.
-                </p>
-              </div>
-            )}
 
             <div className="space-y-4 py-4 mb-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
               {cartItems.map((item) => (
@@ -510,13 +495,6 @@ export default function CheckoutPage() {
                 <span className="text-black">${cartTotal.toFixed(2)}</span>
               </div>
 
-              {appliesSmallOrderFee && (
-                <div className="flex justify-between text-[13px] font-bold text-amber-600">
-                  <span className="flex items-center gap-2">Small Order Fee</span>
-                  <span>${currentFee.toFixed(2)}</span>
-                </div>
-              )}
-
               <div className="flex justify-between text-[13px] font-bold text-gray-600">
                 <span className="flex items-center gap-2">
                   {deliveryMethod === "pickup" ? "Local Pickup" : "Shipping"} 
@@ -530,9 +508,9 @@ export default function CheckoutPage() {
               <div className="mb-6 p-4 bg-[#ecfdf5] border border-[#a7f3d0] rounded-xl flex items-start gap-3 animate-in fade-in zoom-in duration-300">
                 <MapPin size={24} className="text-[#059669] flex-shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-[11px] font-black uppercase tracking-widest text-[#065f46] mb-1">Will Call / Pickup Ready</h4>
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-[#065f46] mb-1">Local Pickup</h4>
                   <p className="text-xs font-medium text-[#047857] leading-relaxed">
-                    We will call you when your order is ready for pickup at our facility:<br/>
+                    We will notify you when your order is ready for pickup at our facility:<br/>
                     <strong className="block mt-2 text-black">104 Kingston St<br/>Lawrence, MA 01843</strong>
                   </p>
                 </div>
