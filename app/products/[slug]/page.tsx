@@ -643,7 +643,7 @@ function ProductPageContent() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { id: "emb", label: "Embroidery", notes: "1-3 Locations" },
-                  { id: "sp", label: "Screen Print", notes: "1-4 Locations" }
+                  { id: "sp", label: "Apparel Printing", notes: "1-4 Locations" }
                 ].map((method) => (
                   <button 
                     key={method.id} onClick={() => setDecorationMethod(method.id as any)}
