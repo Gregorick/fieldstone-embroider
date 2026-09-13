@@ -40,11 +40,11 @@ export async function POST(request: Request) {
       }
     }
 
-    const data = await resend.emails.send({
+    // 🚀 1. CORREO DE ALERTA PARA EL ADMINISTRADOR Y LA TIENDA
+    const adminEmail = await resend.emails.send({
       from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>',
-      to: ['customer@fieldstoneembroidery.com'],
-      cc: ['Gregorick.liriano@gmail.com'],
-      subject: `New Quote Request (500+ pcs) - ${productTitle}`,
+      to: ['info@fieldstoneembroidery.com', 'Gregorick.liriano@gmail.com'], // Reciben la cotización
+      subject: `New Quote Request - ${productTitle}`,
       html: `
         <h2>New Quote Request Received</h2>
         <p><strong>Customer Name:</strong> ${customerName}</p>
@@ -66,7 +66,33 @@ export async function POST(request: Request) {
       attachments: attachments.length > 0 ? attachments : undefined
     });
 
-    return NextResponse.json({ success: true, data });
+    // 🚀 2. CORREO DE CONFIRMACIÓN AUTOMÁTICA PARA EL CLIENTE
+    const customerEmailResponse = await resend.emails.send({
+      from: 'Fieldstone Embroidery <info@fieldstoneembroidery.com>',
+      to: [customerEmail], // Solo va dirigido al cliente
+      subject: `Thank you for your Quote Request - Fieldstone Embroidery`,
+      html: `
+        <h2>Thank You for Your Quote Request!</h2>
+        <p>Hi ${customerName},</p>
+        <p>We have successfully received your request for a custom quote. Our team is currently reviewing your details and we will contact you as soon as possible to discuss your project and provide pricing.</p>
+        <p>Below is a summary of your request for your records:</p>
+        <hr />
+        <ul>
+          <li><strong>Product:</strong> ${productTitle} (Style: ${productStyle})</li>
+          <li><strong>Color:</strong> ${selectedColor}</li>
+          <li><strong>Size:</strong> ${selectedSize}</li>
+          <li><strong>Decoration Method:</strong> ${decorationMethod}</li>
+          <li><strong>Locations:</strong> ${locations}</li>
+          <li><strong>Quantity:</strong> ${quantity} units</li>
+          <li><strong>Extra Comments:</strong> ${extraComments || 'None'}</li>
+        </ul>
+        <p>We look forward to working with you!</p>
+        <p><strong>Fieldstone Embroidery Team</strong></p>
+      `
+      // Omitimos el attachment en el correo del cliente para que no reciba su propio logo de vuelta y ahorres ancho de banda en Resend
+    });
+
+    return NextResponse.json({ success: true, adminEmail, customerEmailResponse });
   } catch (error: any) {
     console.error("Resend API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

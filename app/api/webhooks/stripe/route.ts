@@ -181,14 +181,11 @@ export async function POST(req: Request) {
       }
 
       try {
-        // 🚀 OBTENER CONFIGURACIÓN DE CORREOS DESDE SUPABASE
         const { data: settings } = await supabase.from('store_settings').select('*').eq('id', 'default').single();
         
-        // Defaults en Inglés para el Cliente
         let clientSubject = `Thank you for your purchase, ${clientName}! Order #${shortOrderId}`;
         let clientMessage = `Your payment has been successfully processed and we are ready to start preparing your custom items. Here is the exact breakdown of your purchase:`;
 
-        // Defaults en Inglés para el Admin
         let adminSubject = `🚨 NEW PAID ORDER - $${totalToDisplay} (ID: #${shortOrderId})`;
         let adminMessage = `A new order has been processed in the store. Review the details below:`;
 
@@ -249,10 +246,10 @@ export async function POST(req: Request) {
           `
         });
 
-        // CORREO 2: PARA EL ADMIN
+        // 🚀 CORREO 2: PARA EL ADMIN (Con el equipo en copia usando un array)
         await resend.emails.send({
           from: 'Notificaciones <info@fieldstoneembroidery.com>',
-          to: 'gregorick.liriano@gmail.com', 
+          to: ['gregorick.liriano@gmail.com', 'info@fieldstoneembroidery.com'], // 🚀 ARRAY CON MÚLTIPLES CORREOS
           subject: adminSubject,
           html: `
             <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; border: 2px solid #10b981; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
