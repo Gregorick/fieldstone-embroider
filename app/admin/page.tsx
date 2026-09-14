@@ -941,7 +941,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🚀 PESTAÑA PRICING: SE HAN OCULTADO LOS CAMPOS DEL SMALL ORDER FEE */}
+        {/* 🚀 PESTAÑA PRICING */}
         {activeTab === "pricing" && (
           <div className="animate-in fade-in duration-500 max-w-5xl">
             <div className="flex justify-between items-center mb-8">
@@ -956,15 +956,27 @@ export default function AdminDashboard() {
               <div>
                 <h3 className="text-sm font-black uppercase tracking-widest text-blue-900 mb-2">How Pricing Rules Work</h3>
                 <p className="text-xs font-medium text-blue-800/80 leading-relaxed max-w-3xl">
-                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and modify the quantity range bounds.
+                  Here you can dynamically adjust the extra cost added per product based on the decoration method (Embroidery or Screen Print) and modify both the quantity range bounds and the Small Order Fee threshold.
                 </p>
               </div>
             </div>
 
-            {/* 🔥 LOS CAMPOS DE SMALL ORDER FEE ESTÁN OCULTOS PERO LA LÓGICA ESTÁ INTACTA */}
-            <div className="hidden">
-              <input type="number" value={feeThreshold} onChange={(e) => setFeeThreshold(Number(e.target.value))} />
-              <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(Number(e.target.value))} />
+            {/* 🔥 RESTAURADOS LOS CAMPOS DE SMALL ORDER FEE */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Small Order Threshold ($)</label>
+                <div className="relative">
+                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input type="number" value={feeThreshold} onChange={(e) => setFeeThreshold(Number(e.target.value))} className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Small Order Fee Amount ($)</label>
+                <div className="relative">
+                  <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(Number(e.target.value))} className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-black outline-none focus:border-blue-600 transition-colors shadow-sm"/>
+                </div>
+              </div>
             </div>
 
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">

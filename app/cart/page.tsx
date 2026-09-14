@@ -5,6 +5,7 @@ import { useCart } from "../context/CartContext";
 import { X, Plus, Minus, Trash2, ShoppingBag, Lock, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { getLiveInventory } from "@/app/actions/sanmarApi";
+import { supabase } from "@/lib/supabase"; // 🚀 Importado para leer el fee
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { ChevronRight, ArrowRight } from "lucide-react";
@@ -15,6 +16,27 @@ export default function CartPage() {
 
   const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
   const [checkingStock, setCheckingStock] = useState(false);
+
+  // 🚀 RESTAURADO: Estados dinámicos para el Small Order Fee
+  const [feeThreshold, setFeeThreshold] = useState<number>(300);
+  const [feeAmount, setFeeAmount] = useState<number>(65);
+  const amountAway = feeThreshold - cartTotal;
+
+  // 🚀 RESTAURADO: Leer la configuración de Supabase
+  useEffect(() => {
+    async function fetchStoreSettings() {
+      try {
+        const { data } = await supabase.from('store_settings').select('small_order_fee_threshold, small_order_fee_amount').eq('id', 'default').single();
+        if (data) {
+          if (data.small_order_fee_threshold !== undefined) setFeeThreshold(Number(data.small_order_fee_threshold));
+          if (data.small_order_fee_amount !== undefined) setFeeAmount(Number(data.small_order_fee_amount));
+        }
+      } catch (err) {
+        console.error("Error fetching store settings for cart:", err);
+      }
+    }
+    fetchStoreSettings();
+  }, []);
 
   useEffect(() => {
     const savedLogo = localStorage.getItem("user_custom_logo");
@@ -160,6 +182,7 @@ export default function CartPage() {
                         <div className="flex items-center border border-gray-200 rounded-2xl h-12 bg-white transition-colors hover:border-gray-300 shadow-sm">
                           <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-4 text-gray-500 hover:text-black transition-colors"><Minus size={14} strokeWidth={3} /></button>
                           <span className="w-8 text-center text-black text-[13px] font-black">{item.quantity}</span>
+                          
                           <button 
                             onClick={() => {
                               if (itemStock !== undefined && item.quantity >= itemStock) return;
@@ -198,6 +221,19 @@ export default function CartPage() {
             <div className="w-full lg:w-[400px] bg-gray-50 p-10 rounded-[2.5rem] sticky top-8 border border-gray-100 shadow-sm">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-black mb-8">Order Summary</h2>
               
+              {/* 🚀 RESTAURADO: Alerta de Small Order Fee */}
+              {cartTotal < feeThreshold && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                  <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-[10px] font-medium text-amber-800 leading-relaxed uppercase tracking-wide">
+                    Orders under <strong>${feeThreshold}</strong> are subject to a <strong>${feeAmount}</strong> small order processing fee at checkout. <br/>
+                    <span className="font-medium text-amber-600 block mt-1">
+                      You are <strong>${amountAway.toFixed(2)}</strong> away from waiving this fee!
+                    </span>
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-4 py-4 border-b border-gray-200 pb-6 mb-6">
                 <div className="flex justify-between text-[13px] font-bold text-gray-600">
                   <span>Subtotal</span>

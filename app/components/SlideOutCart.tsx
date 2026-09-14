@@ -14,9 +14,9 @@ export default function SlideOutCart() {
   const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
   const [checkingStock, setCheckingStock] = useState(false);
 
-  // 🚀 TARIFA OCULTA - La seteamos pero no la usamos visualmente ni afecta el total temporalmente
-  const [feeThreshold, setFeeThreshold] = useState<number>(0); // Desactivado
-  const [feeAmount, setFeeAmount] = useState<number>(0);       // Desactivado
+  // 🚀 RESTAURADO: Estados dinámicos para el Small Order Fee
+  const [feeThreshold, setFeeThreshold] = useState<number>(300);
+  const [feeAmount, setFeeAmount] = useState<number>(65);
   const amountAway = feeThreshold - cartTotal;
 
   useEffect(() => {
@@ -24,9 +24,9 @@ export default function SlideOutCart() {
       try {
         const { data } = await supabase.from('store_settings').select('small_order_fee_threshold, small_order_fee_amount').eq('id', 'default').single();
         if (data) {
-          // Ocultado temporalmente. Si deseas reactivarlo, quita el '0' y usa la data
-          setFeeThreshold(0); // Number(data.small_order_fee_threshold)
-          setFeeAmount(0);    // Number(data.small_order_fee_amount)
+          // 🚀 RESTAURADO: Leer valores reales de la base de datos
+          if (data.small_order_fee_threshold !== undefined) setFeeThreshold(Number(data.small_order_fee_threshold));
+          if (data.small_order_fee_amount !== undefined) setFeeAmount(Number(data.small_order_fee_amount));
         }
       } catch (err) {
         console.error("Error fetching store settings for cart:", err);
@@ -206,13 +206,27 @@ export default function SlideOutCart() {
 
         {cartItems.length > 0 && (
           <div className="border-t border-gray-100 p-6 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20 relative">
+            
+            {/* 🚀 RESTAURADO: Alerta de Small Order Fee */}
+            {cartTotal < feeThreshold && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] font-medium text-amber-800 leading-relaxed uppercase tracking-wide">
+                  Orders under <strong>${feeThreshold}</strong> are subject to a <strong>${feeAmount}</strong> small order processing fee at checkout. <br/>
+                  <span className="font-medium text-amber-600 block mt-1">
+                    You are <strong>${amountAway.toFixed(2)}</strong> away from waiving this fee!
+                  </span>
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-between items-end mb-4">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Subtotal</span>
               <span className="text-3xl font-black text-black tracking-tighter leading-none">${cartTotal.toFixed(2)}</span>
             </div>
             
             <p className="text-[10px] text-gray-400 mb-6 text-center bg-gray-50 p-2 rounded-lg border border-gray-100">
-              Shipping and taxes are calculated at checkout.
+              Shipping, taxes, and applicable small-order fees are calculated at checkout.
             </p>
             
             <div className="flex flex-col gap-3">

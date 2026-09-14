@@ -63,15 +63,22 @@ export default function CheckoutPage() {
 
   const [pricingTiers, setPricingTiers] = useState<any[]>([]);
 
-  // 🚀 TARIFA OCULTA (Siempre será 0 a partir de ahora)
-  const currentFee = 0; 
+  // 🚀 RESTAURADO: Estados dinámicos para el Small Order Fee
+  const [feeThreshold, setFeeThreshold] = useState<number>(300);
+  const [feeAmount, setFeeAmount] = useState<number>(65);
+
+  const appliesSmallOrderFee = cartTotal > 0 && cartTotal < feeThreshold;
+  const currentFee = appliesSmallOrderFee ? feeAmount : 0;
 
   useEffect(() => {
     async function fetchUserDataAndSettings() {
-      const { data: settings } = await supabase.from("store_settings").select("decoration_tiers").eq("id", "default").maybeSingle();
+      const { data: settings } = await supabase.from("store_settings").select("decoration_tiers, small_order_fee_threshold, small_order_fee_amount").eq("id", "default").maybeSingle();
       
       if (settings) {
         if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
+        // 🚀 RESTAURADO: Leer configuración desde Supabase
+        if (settings.small_order_fee_threshold !== undefined) setFeeThreshold(Number(settings.small_order_fee_threshold));
+        if (settings.small_order_fee_amount !== undefined) setFeeAmount(Number(settings.small_order_fee_amount));
       }
 
       const { data: { session } } = await supabase.auth.getSession();
@@ -179,7 +186,9 @@ export default function CheckoutPage() {
   }
   
   const shippingCost = deliveryMethod === "pickup" ? 0 : currentShippingCost;
-  const finalTotal = cartTotal + shippingCost + currentFee; // currentFee ahora es 0 siempre
+  
+  // 🚀 RESTAURADO: Se vuelve a sumar la tarifa extra al total si aplica
+  const finalTotal = cartTotal + shippingCost + currentFee; 
 
   const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -247,7 +256,7 @@ export default function CheckoutPage() {
           email: formData.email,
           orderId: orderId,
           shippingCost: shippingCost,
-          smallOrderFee: currentFee // Sigue siendo 0, Stripe no agregará el cargo.
+          smallOrderFee: currentFee // 🚀 RESTAURADO: Se vuelve a enviar el costo extra a Stripe
         }),
       });
 
@@ -465,6 +474,16 @@ export default function CheckoutPage() {
           <div className="lg:col-span-5 w-full bg-gray-50 p-8 md:p-10 rounded-[2.5rem] sticky top-8 border border-gray-100">
             <h2 className="text-2xl font-black uppercase tracking-tighter text-black mb-8">Order Summary</h2>
 
+            {/* 🚀 RESTAURADO: Alerta de orden pequeña */}
+            {appliesSmallOrderFee && (
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] font-medium text-amber-800 leading-relaxed uppercase tracking-wide">
+                  Orders under <strong>${feeThreshold}</strong> are subject to a <strong>${feeAmount}</strong> small order processing fee.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-4 py-4 mb-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
               {cartItems.map((item) => (
                 <div key={item.id} className="flex items-center gap-4">
@@ -494,6 +513,14 @@ export default function CheckoutPage() {
                 <span>Subtotal</span>
                 <span className="text-black">${cartTotal.toFixed(2)}</span>
               </div>
+
+              {/* 🚀 RESTAURADO: Desglose del costo extra */}
+              {appliesSmallOrderFee && (
+                <div className="flex justify-between text-[13px] font-bold text-amber-600">
+                  <span className="flex items-center gap-2">Small Order Fee</span>
+                  <span>${currentFee.toFixed(2)}</span>
+                </div>
+              )}
 
               <div className="flex justify-between text-[13px] font-bold text-gray-600">
                 <span className="flex items-center gap-2">
