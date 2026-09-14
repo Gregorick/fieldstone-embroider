@@ -34,7 +34,7 @@ export default function TermsAndConditionsPage() {
   }, []);
 
   return (
-    <div className="bg-white min-h-screen flex flex-col overflow-x-hidden">
+    <div className="bg-white min-h-screen flex flex-col">
       <Header />
       
       <main className="flex-1 w-full max-w-4xl mx-auto px-6 py-16 text-gray-800">
@@ -49,12 +49,12 @@ export default function TermsAndConditionsPage() {
         ) : content ? (
           <div 
             className="prose prose-base max-w-none text-gray-800 font-medium leading-relaxed 
-                       break-words whitespace-normal w-full overflow-hidden
                        prose-h2:text-xl prose-h2:font-bold prose-h2:text-black prose-h2:mb-3 prose-h2:mt-8
                        prose-p:mb-4
                        prose-ul:list-disc prose-ul:pl-6 prose-ul:mt-2 prose-ul:space-y-1
                        prose-strong:text-black"
-            dangerouslySetInnerHTML={{ __html: content }} 
+            // 🚀 AQUÍ ESTÁ LA MAGIA
+            dangerouslySetInnerHTML={{ __html: content.replace(/&nbsp;/g, ' ') }} 
           />
         ) : (
           <p className="text-gray-500">Terms and conditions content is currently unavailable.</p>
