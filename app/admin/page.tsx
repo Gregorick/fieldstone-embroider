@@ -3,23 +3,26 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabase";
 import { 
   LayoutDashboard, ShoppingBag, FolderTree, User, Users, UserPlus,
   LogOut, Search, Eye, Check, X, Camera, Save, Lock, Grip,
   Package, Download, BarChart3, Trash2, DollarSign, Truck,
   ChevronLeft, ChevronRight, BellRing, Send, AlertTriangle,
-  MessageSquare, PanelBottom, MapPin, Mail
+  MessageSquare, PanelBottom, MapPin, Mail, FileText
 } from "lucide-react";
 
-// 🚀 Helper para extraer el UUID limpio
+// Carga dinámica de React Quill y sus estilos
+const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
+import "react-quill-new/dist/quill.snow.css";
+
 const extractCleanId = (idStr: string) => {
   if (!idStr) return "";
   const match = idStr.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
   return match ? match[0] : idStr;
 };
 
-// 🚀 Validador de contraseñas seguras
 const validatePassword = (password: string) => {
   const errors = [];
   if (password.length < 8) errors.push("At least 8 characters long");
@@ -83,6 +86,21 @@ export default function AdminDashboard() {
   const [feeThreshold, setFeeThreshold] = useState<number>(300);
   const [feeAmount, setFeeAmount] = useState<number>(65);
   const [pricingTiers, setPricingTiers] = useState<any[]>(DEFAULT_TIERS);
+
+  // ESTADOS PARA LAS PÁGINAS LEGALES
+  const [activeLegalTab, setActiveLegalTab] = useState("return");
+  const [returnPolicy, setReturnPolicy] = useState("");
+  const [termsConditions, setTermsConditions] = useState("");
+  const [privacyPolicy, setPrivacyPolicy] = useState("");
+
+  const quillModules = {
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['link', 'clean']
+    ],
+  };
 
   const [activeEmailTab, setActiveEmailTab] = useState("customer_receipt");
   const [emailSettings, setEmailSettings] = useState({
@@ -225,6 +243,10 @@ export default function AdminDashboard() {
       if (settings.small_order_fee_amount !== undefined) setFeeAmount(settings.small_order_fee_amount);
       if (settings.decoration_tiers) setPricingTiers(settings.decoration_tiers);
       
+      if (settings.return_policy) setReturnPolicy(settings.return_policy);
+      if (settings.terms_conditions) setTermsConditions(settings.terms_conditions);
+      if (settings.privacy_policy) setPrivacyPolicy(settings.privacy_policy);
+
       setEmailSettings(prev => ({
         ...prev,
         orderSubject: settings.email_order_subject || prev.orderSubject,
@@ -322,6 +344,11 @@ export default function AdminDashboard() {
       small_order_fee_threshold: feeThreshold, 
       small_order_fee_amount: feeAmount, 
       decoration_tiers: pricingTiers,
+      
+      return_policy: returnPolicy,
+      terms_conditions: termsConditions,
+      privacy_policy: privacyPolicy,
+
       email_order_subject: emailSettings.orderSubject, 
       email_order_message: emailSettings.orderMessage,
       admin_email_subject: emailSettings.adminSubject,
@@ -678,6 +705,12 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen flex bg-gray-50">
       
+      <style dangerouslySetInnerHTML={{__html: `
+        .ql-editor { min-height: 400px; font-size: 14px; font-family: inherit; }
+        .ql-container { border-bottom-left-radius: 0.75rem; border-bottom-right-radius: 0.75rem; }
+        .ql-toolbar { border-top-left-radius: 0.75rem; border-top-right-radius: 0.75rem; background: #f9fafb; }
+      `}} />
+
       <aside className="w-64 bg-[#111111] text-white flex flex-col fixed h-full z-50">
         <div className="h-20 flex items-center px-6 border-b border-gray-800">
           <h1 className="text-xl font-black uppercase tracking-widest italic">FS Admin<span className="text-blue-500">.</span></h1>
@@ -700,8 +733,10 @@ export default function AdminDashboard() {
           <button onClick={() => setActiveTab("orders")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "orders" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><ShoppingBag size={16} /> Orders</button>
           <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "pricing" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><DollarSign size={16} /> Pricing Rules</button>
           <button onClick={() => setActiveTab("categories")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "categories" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><FolderTree size={16} /> Shop Filters</button>
-          <button onClick={() => setActiveTab("footer")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "footer" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><PanelBottom size={16} /> Footer Details</button>
           
+          <button onClick={() => setActiveTab("legal")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "legal" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><FileText size={16} /> Legal Pages</button>
+
+          <button onClick={() => setActiveTab("footer")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "footer" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><PanelBottom size={16} /> Footer Details</button>
           <button onClick={() => setActiveTab("webmails")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === "webmails" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}><Mail size={16} /> Webmails</button>
 
           {profile.role === 'admin' && (
@@ -928,7 +963,7 @@ export default function AdminDashboard() {
                     </span>
 
                     <button 
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      onClick={() => setCurrentPage(prev => Math.min(currentFormPage + 1, totalPages))}
                       disabled={currentPage === totalPages}
                       className="p-2 rounded-xl border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                     >
@@ -941,7 +976,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🚀 PESTAÑA PRICING */}
         {activeTab === "pricing" && (
           <div className="animate-in fade-in duration-500 max-w-5xl">
             <div className="flex justify-between items-center mb-8">
@@ -961,7 +995,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* 🔥 RESTAURADOS LOS CAMPOS DE SMALL ORDER FEE */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Small Order Threshold ($)</label>
@@ -1045,7 +1078,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🟢 PESTAÑA: SHOP FILTERS */}
         {activeTab === "categories" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
             <div className="flex justify-between items-center mb-8">
@@ -1055,7 +1087,6 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* VISIBLE CATEGORIES */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8">
               <h3 className="text-lg font-black uppercase tracking-widest text-black mb-2">Visible Categories</h3>
               <p className="text-xs font-medium text-gray-500 mb-6">Drag and drop cards to reorder how categories appear in the Header & Products page. Click to toggle visibility.</p>
@@ -1097,7 +1128,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* VISIBLE BRANDS */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200">
               <h3 className="text-lg font-black uppercase tracking-widest text-black mb-2">Visible Brands</h3>
               <p className="text-xs font-medium text-gray-500 mb-6">Drag and drop cards to reorder how brands appear in the Header & Products page. Click to toggle visibility.</p>
@@ -1136,6 +1166,55 @@ export default function AdminDashboard() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🚀 NUEVA PESTAÑA: LEGAL PAGES */}
+        {activeTab === "legal" && (
+          <div className="animate-in fade-in duration-500 max-w-4xl">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-black">Legal Pages</h2>
+              <button onClick={saveSettings} className="px-6 py-3 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2">
+                <Save size={14} /> Save Legal Pages
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200">
+              <button 
+                onClick={() => setActiveLegalTab("return")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeLegalTab === "return" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Return Policy
+              </button>
+              <button 
+                onClick={() => setActiveLegalTab("terms")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeLegalTab === "terms" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Terms & Conditions
+              </button>
+              <button 
+                onClick={() => setActiveLegalTab("privacy")} 
+                className={`pb-4 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeLegalTab === "privacy" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                Privacy Policy
+              </button>
+            </div>
+
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8">
+              <p className="text-xs font-medium text-gray-500 mb-4">Edit the content of your legal pages below. Changes will be reflected immediately on the live site after saving.</p>
+              
+              <div className="rounded-xl border border-gray-300 overflow-hidden bg-white">
+                {activeLegalTab === "return" && (
+                  <ReactQuill theme="snow" value={returnPolicy} onChange={setReturnPolicy} modules={quillModules} className="border-none" />
+                )}
+                {activeLegalTab === "terms" && (
+                  <ReactQuill theme="snow" value={termsConditions} onChange={setTermsConditions} modules={quillModules} className="border-none" />
+                )}
+                {activeLegalTab === "privacy" && (
+                  <ReactQuill theme="snow" value={privacyPolicy} onChange={setPrivacyPolicy} modules={quillModules} className="border-none" />
+                )}
               </div>
             </div>
           </div>
@@ -1205,7 +1284,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🚀 PESTAÑA WEBMAILS */}
         {activeTab === "webmails" && (
           <div className="animate-in fade-in duration-500 max-w-4xl">
             <div className="flex justify-between items-center mb-8">
@@ -1254,7 +1332,6 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* CONTENIDO DE LAS PESTAÑAS DE CORREO */}
             {activeEmailTab === "customer_receipt" && (
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-200 mb-8 animate-in fade-in">
                 <h3 className="text-lg font-black uppercase tracking-widest text-black mb-1">Customer Receipt Email</h3>
@@ -1383,7 +1460,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🚀 AÑADIDO: Ocultamos el contenido de "users" si el rol no es 'admin' */}
         {activeTab === "users" && profile.role === 'admin' && (
           <div className="animate-in fade-in duration-500">
             <div className="flex justify-between items-center mb-8">
@@ -1601,7 +1677,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🚀 PESTAÑA: PERFIL ACTUALIZADA CON SEGURIDAD EN LA CONTRASEÑA */}
         {activeTab === "profile" && (
           <div className="animate-in fade-in duration-500 max-w-2xl">
             <h2 className="text-3xl font-black uppercase tracking-tighter text-black mb-8">Admin Profile</h2>
@@ -1633,7 +1708,6 @@ export default function AdminDashboard() {
                     className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"
                   />
 
-                  {/* 🚀 Alerta de errores de contraseña en vivo */}
                   {password.length > 0 && passwordErrors.length > 0 && (
                     <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
                       <p className="text-[10px] font-black uppercase tracking-widest text-red-800 mb-2 flex items-center gap-1">
@@ -1647,7 +1721,6 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                  {/* 🚀 Check de éxito */}
                   {password.length > 0 && passwordErrors.length === 0 && (
                     <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
                       <Check size={16} className="text-green-600" />
@@ -1674,7 +1747,6 @@ export default function AdminDashboard() {
 
       </main>
 
-      {/* MODAL ORDEN */}
       {selectedOrder && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => setSelectedOrder(null)}>
           <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -1737,7 +1809,6 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              {/* 🔥 NUEVO BLOQUE DE DIRECCIÓN */}
               <div className="bg-gray-50 border border-gray-300 p-6 rounded-2xl shadow-sm mt-4">
                 <h4 className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2 mb-2">
                   <MapPin size={18} /> Delivery Address
@@ -1814,7 +1885,6 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                        {/* Logo section */}
                         {item.custom_logo_url && (
                           <div className="flex flex-col items-center gap-2">
                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Uploaded Logo</span>
@@ -1866,7 +1936,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* MODAL USUARIO */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => setIsUserModalOpen(false)}>
           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -1878,7 +1947,6 @@ export default function AdminDashboard() {
                </div>
                <div><label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-2">Email Address *</label><input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-black outline-none focus:border-black transition-colors"/></div>
                
-               {/* 🚀 Validación de contraseña al crear un usuario nuevo desde el Admin */}
                <div>
                  <div className="grid grid-cols-2 gap-4">
                    <div>
@@ -1915,7 +1983,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* MODAL DE ADVERTENCIA PARA CAMBIO DE ESTADO MANUAL */}
       {pendingStatusChange && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
