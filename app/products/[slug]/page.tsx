@@ -124,7 +124,6 @@ function ProductPageContent() {
   
   const [decorationTiers, setDecorationTiers] = useState<any[]>(DEFAULT_DECORATION_TIERS);
   
-  // 🚀 RESTAURADO: Valores iniciales
   const [feeThreshold, setFeeThreshold] = useState<number>(300);
   const [feeAmount, setFeeAmount] = useState<number>(65);
 
@@ -134,7 +133,6 @@ function ProductPageContent() {
 
   const [isPlacementGuideOpen, setIsPlacementGuideOpen] = useState(false);
 
-  // 🚀 RESTAURADO: Textos que mencionan la tarifa en las notas informativas
   const DISCLOSURES = [
     { id: "preview", icon: <Info size={16}/>, title: "What Your Logo Might Look Like", content: "Preview will not represent exact size or location. A proof will be provided before production begins. Logos placed in standard location unless otherwise requested." },
     { id: "one-logo", icon: <Check size={16}/>, title: "One Logo Per Order", content: "Logo goes on all products in the order. No need to upload logo on every item. Location changes should be noted at checkout. Color changes by item should be noted at checkout." },
@@ -179,7 +177,6 @@ function ProductPageContent() {
           setDecorationTiers(parsedTiers);
         }
         
-        // 🚀 RESTAURADO: Volvemos a leer de la BD
         if (settings.small_order_fee_threshold !== undefined) setFeeThreshold(Number(settings.small_order_fee_threshold));
         if (settings.small_order_fee_amount !== undefined) setFeeAmount(Number(settings.small_order_fee_amount));
       }
@@ -399,7 +396,8 @@ function ProductPageContent() {
       color: selectedColor,
       decorationMethod: decorationMethod.toUpperCase(),
       location: combinedLocations,
-      extraComments: extraComments
+      extraComments: extraComments,
+      category: product.category // 🚀 ¡LA PIEZA FALTANTE AÑADIDA AQUÍ!
     } as any);
     setIsCartOpen(true);
   };
