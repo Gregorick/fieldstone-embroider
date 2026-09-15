@@ -2,12 +2,21 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
+import { useCart } from "../context/CartContext"; // 🚀 Asegúrate de que esta ruta coincida con la estructura de tus carpetas (puede ser "@/context/CartContext")
 
 function SuccessContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order_id");
   const shortOrderId = orderId ? orderId.split('-')[0].toUpperCase() : null;
+
+  // 🚀 1. Traemos la función para limpiar el carrito
+  const { clearCart } = useCart();
+
+  // 🚀 2. Ejecutamos la limpieza apenas cargue esta pantalla (porque el pago fue exitoso)
+  useEffect(() => {
+    clearCart();
+  }, [clearCart]);
 
   return (
     <div className="bg-white p-10 rounded-lg shadow-sm max-w-lg w-full text-center border border-gray-100">
