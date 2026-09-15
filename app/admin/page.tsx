@@ -75,6 +75,10 @@ export default function AdminDashboard() {
   const [pendingStatusChange, setPendingStatusChange] = useState<{order: any, newStatus: string} | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
+  // 🚀 ESTADOS PARA LA ELIMINACIÓN DE ÓRDENES
+  const [pendingDeleteOrder, setPendingDeleteOrder] = useState<any>(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [visibleCategories, setVisibleCategories] = useState<string[]>([]);
   const [allBrands, setAllBrands] = useState<string[]>([]);
@@ -425,6 +429,22 @@ export default function AdminDashboard() {
     } catch (err: any) { alert("Error deleting subscriber: " + err.message); }
   };
 
+  const confirmDeleteOrder = async () => {
+    if (!pendingDeleteOrder) return;
+    setIsDeletingOrder(true);
+    try {
+      const { error } = await supabase.from('orders').delete().eq('id', pendingDeleteOrder.id);
+      if (error) throw error;
+      setOrders(prev => prev.filter(o => o.id !== pendingDeleteOrder.id));
+      setUnseenOrders(prev => prev.filter(o => o.id !== pendingDeleteOrder.id));
+      setPendingDeleteOrder(null);
+    } catch (err: any) {
+      alert("Error deleting order: " + err.message);
+    } finally {
+      setIsDeletingOrder(false);
+    }
+  };
+
   const handleOpenOrder = async (order: any) => {
     setSelectedOrder(order);
     setTrackingUrlInput("");
@@ -705,8 +725,10 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen flex bg-gray-50">
       
+      {/* 🚀 CSS CORREGIDO PARA QUE EL TEXTO DE QUILL SIEMPRE SEA NEGRO */}
       <style dangerouslySetInnerHTML={{__html: `
-        .ql-editor { min-height: 400px; font-size: 14px; font-family: inherit; }
+        .ql-editor { min-height: 400px; font-size: 14px; font-family: inherit; color: #000000 !important; }
+        .ql-editor * { color: #000000 !important; }
         .ql-container { border-bottom-left-radius: 0.75rem; border-bottom-right-radius: 0.75rem; }
         .ql-toolbar { border-top-left-radius: 0.75rem; border-top-right-radius: 0.75rem; background: #f9fafb; }
       `}} />
@@ -935,7 +957,20 @@ export default function AdminDashboard() {
                           </select>
                         </td>
                         <td className="p-6 text-right">
-                          <button onClick={() => handleOpenOrder(order)} className="p-2 bg-black text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"><Eye size={14} /> View</button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => handleOpenOrder(order)} className="p-2 bg-black text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"><Eye size={14} /> View</button>
+                            
+                            {/* 🚀 BOTÓN DE ELIMINAR ORDEN (SOLO ADMINS) */}
+                            {profile.role === 'admin' && (
+                              <button 
+                                onClick={() => setPendingDeleteOrder(order)} 
+                                className="p-2 bg-white border border-gray-300 text-red-500 rounded-lg hover:bg-red-50 transition-colors shadow-sm"
+                                title="Delete Order"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -2010,6 +2045,41 @@ export default function AdminDashboard() {
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   "I Agree"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 MODAL DE ELIMINAR ORDEN */}
+      {pendingDeleteOrder && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+              <Trash2 size={32} className="text-red-500" />
+            </div>
+            <h3 className="text-xl font-black uppercase tracking-tighter text-black mb-2">Delete Order?</h3>
+            <p className="text-[11px] font-bold text-gray-500 mb-8 uppercase tracking-widest leading-relaxed">
+              YOU ARE ABOUT TO PERMANENTLY DELETE ORDER <span className="text-black font-black">#{pendingDeleteOrder.id.split('-')[0]}</span>. THIS ACTION CANNOT BE UNDONE. DO YOU WANT TO PROCEED?
+            </p>
+            <div className="flex w-full gap-3">
+              <button 
+                onClick={() => setPendingDeleteOrder(null)} 
+                disabled={isDeletingOrder}
+                className="flex-1 py-4 bg-gray-100 text-gray-600 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmDeleteOrder} 
+                disabled={isDeletingOrder}
+                className="flex-1 py-4 bg-red-600 text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-red-700 transition-colors shadow-lg disabled:opacity-50 flex justify-center items-center"
+              >
+                {isDeletingOrder ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  "Eliminar Orden"
                 )}
               </button>
             </div>
