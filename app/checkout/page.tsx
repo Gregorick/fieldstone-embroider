@@ -199,7 +199,7 @@ export default function CheckoutPage() {
 
     try {
       if (deliveryMethod === "shipping") {
-        const verifyRes = await fetch('/fieldstone-embroider/api/verify-address', {
+        const verifyRes = await fetch('/api/verify-address', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -248,7 +248,7 @@ export default function CheckoutPage() {
 
       const orderId = orderResult.orderId;
 
-      const res = await fetch('/fieldstone-embroider/api/create-stripe-checkout', {
+      const res = await fetch('/api/create-stripe-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

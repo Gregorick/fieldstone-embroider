@@ -21,7 +21,7 @@ export default function ForgotPasswordPage() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/fieldstone-embroider/update-password`,
+        redirectTo: `${window.location.origin}/update-password`,
       });
 
       if (error) throw error;

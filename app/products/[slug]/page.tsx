@@ -432,7 +432,7 @@ function ProductPageContent() {
         extraComments
       };
 
-      const res = await fetch('/fieldstone-embroider/api/send-quote', {
+      const res = await fetch('/api/send-quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

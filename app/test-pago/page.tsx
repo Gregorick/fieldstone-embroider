@@ -9,7 +9,7 @@ export default function PaginaDePruebaPago() {
     setLoading(true);
     try {
       // OJO AQUÍ: Usamos tu basePath '/fieldstone-embroider' en la URL
-      const res = await fetch('/fieldstone-embroider/api/create-checkout', {
+      const res = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

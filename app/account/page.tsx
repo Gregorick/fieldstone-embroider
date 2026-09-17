@@ -258,7 +258,7 @@ export default function AccountPage() {
     setAddressError(null);
 
     try {
-      const verifyRes = await fetch('/fieldstone-embroider/api/verify-address', {
+      const verifyRes = await fetch('/api/verify-address', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

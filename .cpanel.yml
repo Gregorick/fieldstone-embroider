@@ -1,4 +1,4 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/account23/public_html/fieldstone-embroider/
+    - export DEPLOYPATH=/home/account23/public_html/

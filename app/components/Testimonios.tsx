@@ -28,7 +28,7 @@ export default function Testimonios() {
   useEffect(() => {
     async function fetchReviews() {
       try {
-        const res = await fetch('/fieldstone-embroider/api/google-reviews');
+        const res = await fetch('/api/google-reviews');
         
         if (!res.ok) {
           throw new Error(`El servidor devolvió un error: ${res.status}`);

@@ -42,9 +42,9 @@ export async function POST(req: Request) {
         ] 
       },
       redirectUrls: {
-        success: "https://fieldstoneembroidery.com/fieldstone-embroider/success",
-        failure: "https://fieldstoneembroidery.com/fieldstone-embroider/error",
-        cancel: "https://fieldstoneembroidery.com/fieldstone-embroider/cart"
+        success: "https://fieldstoneembroidery.com/success",
+        failure: "https://fieldstoneembroidery.com/error",
+        cancel: "https://fieldstoneembroidery.com/cart"
       }
     };
 

@@ -148,7 +148,7 @@ export default function AdminDashboard() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data?type=orders');
+      const res = await fetch('/api/admin-data?type=orders');
       const { data } = await res.json();
       if (data) {
         setOrders(data);
@@ -161,7 +161,7 @@ export default function AdminDashboard() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data?type=users');
+      const res = await fetch('/api/admin-data?type=users');
       const { data } = await res.json();
       if (data) setUsersList(data);
     } catch (err) { console.error(err); }
@@ -523,7 +523,7 @@ export default function AdminDashboard() {
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+      const res = await fetch('/api/admin-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update_order', payload: { orderId, status: newStatus } })
@@ -550,7 +550,7 @@ export default function AdminDashboard() {
     const { order, newStatus } = pendingStatusChange;
     await updateOrderStatus(order.id, newStatus);
     try {
-      await fetch('/fieldstone-embroider/api/notify-status', {
+      await fetch('/api/notify-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: order.id, status: newStatus, email: order.customer_email, name: order.customer_name, trackingUrl: order.tracking_url })
@@ -566,7 +566,7 @@ export default function AdminDashboard() {
     if (!trackingUrlInput.trim()) return alert("Please paste the tracking link.");
     setIsSendingTracking(true);
     try {
-      const res = await fetch('/fieldstone-embroider/api/easypost', { 
+      const res = await fetch('/api/easypost', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: selectedOrder.id, trackingUrl: trackingUrlInput.trim() }) 
@@ -629,7 +629,7 @@ export default function AdminDashboard() {
 
   const updateUserRole = async (userId: string, newRole: string) => {
     try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+      const res = await fetch('/api/admin-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update_role', payload: { userId, role: newRole } })
@@ -642,7 +642,7 @@ export default function AdminDashboard() {
   const deleteUser = async (userId: string) => {
     if (!confirm("Delete this user?")) return;
     try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+      const res = await fetch('/api/admin-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete_user', payload: { userId } })
@@ -655,7 +655,7 @@ export default function AdminDashboard() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
-      const res = await fetch('/fieldstone-embroider/api/admin-data', {
+      const res = await fetch('/api/admin-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create_user', payload: newUser })

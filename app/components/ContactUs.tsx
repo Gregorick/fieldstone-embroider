@@ -70,7 +70,7 @@ export default function ContactUs() {
       {/* 🎥 VIDEO DE FONDO */}
       <div className="absolute top-0 left-0 w-full h-full z-0 pointer-events-none">
         <video autoPlay loop muted playsInline className="w-full h-full object-cover opacity-70 grayscale">
-          <source src="/fieldstone-embroider/video/header_main.mp4" type="video/mp4" />
+          <source src="/video/header_main.mp4" type="video/mp4" />
           Tu navegador no soporta videos HTML5.
         </video>
       </div>
